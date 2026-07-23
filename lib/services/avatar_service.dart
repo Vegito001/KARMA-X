@@ -60,6 +60,15 @@ class AvatarService {
         'dominant_stat': existing?.dominantStat ?? avatar?.defaultStat,
         'equipped_badges': existing?.equippedBadges ?? <String>[],
         'last_updated': DateTime.now().toIso8601String(),
+        'current_xp': existing?.currentXp ?? 0,
+        'completed_quests': existing?.completedQuests ?? 0,
+        'health_stat': existing?.healthStat ?? 0,
+        'knowledge_stat': existing?.knowledgeStat ?? 0,
+        'discipline_stat': existing?.disciplineStat ?? 0,
+        'social_stat': existing?.socialStat ?? 0,
+        'streak_count': existing?.streakCount ?? 0,
+        'last_active_date': existing?.lastActiveDate?.toIso8601String(),
+        'ghost_mode_unlocked': existing?.ghostModeUnlocked ?? false,
       },
       onConflict: 'user_id',
     );
@@ -69,6 +78,43 @@ class AvatarService {
   Future<void> updateLevel(String userId, int newLevel) async {
     await _db.from('user_avatar_progress').update({
       'current_level': newLevel,
+      'last_updated': DateTime.now().toIso8601String(),
+    }).eq('user_id', userId);
+  }
+
+  /// Persist the full set of run-time progress in one round trip: level,
+  /// XP, completed-quest count, the four growth stats, and the streak /
+  /// ghost-mode data. Replaces what used to be several separate calls
+  /// (updateLevel + updateDominantStat) plus on-device-only
+  /// SharedPreferences writes for XP, quests, stats, and streak — all of
+  /// that now lives in user_avatar_progress and follows the account across
+  /// logins and devices.
+  Future<void> saveProgressSnapshot(
+    String userId, {
+    required int level,
+    required int currentXp,
+    required int completedQuests,
+    required Map<String, int> stats,
+    required int streak,
+    required DateTime lastActiveDate,
+    required bool ghostModeUnlocked,
+  }) async {
+    final dominant = stats.isEmpty
+        ? null
+        : stats.entries.reduce((a, b) => b.value > a.value ? b : a).key;
+
+    await _db.from('user_avatar_progress').update({
+      'current_level': level,
+      'current_xp': currentXp,
+      'completed_quests': completedQuests,
+      'health_stat': stats['health'] ?? 0,
+      'knowledge_stat': stats['knowledge'] ?? 0,
+      'discipline_stat': stats['discipline'] ?? 0,
+      'social_stat': stats['social'] ?? 0,
+      'streak_count': streak,
+      'last_active_date': lastActiveDate.toIso8601String(),
+      'ghost_mode_unlocked': ghostModeUnlocked,
+      if (dominant != null) 'dominant_stat': dominant,
       'last_updated': DateTime.now().toIso8601String(),
     }).eq('user_id', userId);
   }

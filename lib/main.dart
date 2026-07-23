@@ -6,6 +6,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'config/supabase_config.dart';
+import 'utils/model_mode.dart'; // NEW import, near your other imports
 
 void probeDefines() {
   const url = String.fromEnvironment('SUPABASE_URL');
@@ -34,6 +35,7 @@ Future<void> main() async {
 
   probeDefines();
   WidgetsFlutterBinding.ensureInitialized();
+  await ModelMode.instance.load(); // NEW — restores last switch position
 
   // Load local env (optional). If missing, --dart-define still works.
   // NOTE: dotenv.load() REPLACES the entire env map each time it's

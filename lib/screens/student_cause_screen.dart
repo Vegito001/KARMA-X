@@ -3,7 +3,7 @@ import '../theme/app_theme.dart';
 import '../widgets/glitch_text.dart';
 import '../widgets/scanline_overlay.dart';
 import 'student_problem_screen.dart';
-import 'student_quiz_screen.dart';
+import 'student_state_screen.dart';
 
 class StudentCauseScreen extends StatefulWidget {
   final String playerName;
@@ -50,7 +50,7 @@ class _StudentCauseScreenState extends State<StudentCauseScreen>
 
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => StudentQuizScreen(
+        pageBuilder: (_, __, ___) => StudentStateScreen(
           playerName: widget.playerName,
           schedule: widget.schedule,
           problem: widget.problem,

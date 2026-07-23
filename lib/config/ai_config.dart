@@ -23,7 +23,6 @@ class AiConfig {
   static String _lookupDotenv(String key) {
     try {
       final normalizedKey = key.trim().toUpperCase();
-
       for (final entry in dotenv.env.entries) {
         if (entry.key.trim().toUpperCase() == normalizedKey) {
           return entry.value;
@@ -32,7 +31,6 @@ class AiConfig {
     } catch (_) {
       return '';
     }
-
     return '';
   }
 
@@ -47,4 +45,8 @@ class AiConfig {
     }
     return v;
   }
+
+  // ── NEW: your Modal vLLM endpoint ─────────────────────────────────────
+  static const String modalUrl =
+      'https://sgogeta997--karmax-lora-vllm-serve.modal.run/v1/chat/completions';
 }

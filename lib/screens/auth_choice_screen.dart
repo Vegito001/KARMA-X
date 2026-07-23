@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glitch_text.dart';
 import '../widgets/scanline_overlay.dart';
+import '../widgets/model_mode_toggle.dart'; // NEW
 import 'login_screen.dart';
 import 'signup_screen.dart';
 
@@ -33,7 +34,8 @@ class AuthChoiceScreen extends StatelessWidget {
                 const SizedBox(height: 20),
                 Text(
                   'KARMAX',
-                  style: AppTheme.displayFont(size: 14, color: AppTheme.text200),
+                  style:
+                      AppTheme.displayFont(size: 14, color: AppTheme.text200),
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -86,6 +88,8 @@ class AuthChoiceScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 16), // NEW
+                const ModelModeToggle(), // NEW — the switch
                 const Spacer(),
                 _PrimaryButton(
                   label: 'LOGIN',
@@ -119,7 +123,6 @@ class AuthChoiceScreen extends StatelessWidget {
 class _PrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
-
   const _PrimaryButton({required this.label, this.onTap});
 
   @override
@@ -140,10 +143,8 @@ class _PrimaryButton extends StatelessWidget {
           ],
         ),
         child: Center(
-          child: Text(
-            label,
-            style: AppTheme.displayFont(size: 13, color: AppTheme.bg900),
-          ),
+          child: Text(label,
+              style: AppTheme.displayFont(size: 13, color: AppTheme.bg900)),
         ),
       ),
     );
@@ -153,7 +154,6 @@ class _PrimaryButton extends StatelessWidget {
 class _SecondaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
-
   const _SecondaryButton({required this.label, this.onTap});
 
   @override
@@ -168,10 +168,8 @@ class _SecondaryButton extends StatelessWidget {
           border: Border.all(color: AppTheme.borderBright),
         ),
         child: Center(
-          child: Text(
-            label,
-            style: AppTheme.displayFont(size: 13, color: AppTheme.text100),
-          ),
+          child: Text(label,
+              style: AppTheme.displayFont(size: 13, color: AppTheme.text100)),
         ),
       ),
     );

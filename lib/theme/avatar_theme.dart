@@ -38,46 +38,45 @@ class AvatarTheme {
   // Avatar archetypes
   static const List<Map<String, String>> avatarArchetypes = [
     {
-      'archetype': 'knight',
-      'name': 'Noble Knight',
-      'description': 'A steadfast warrior, strong in discipline and honor.',
+      'archetype': 'vegeta',
+      'name': 'Vegeta',
+      'description':
+          'Prince of Saiyans — relentless discipline, driven to be the best.',
       'defaultStat': 'discipline',
-      'colorHex': '#FFD54F',
+      'colorHex': '#3D5AFC',
     },
     {
-      'archetype': 'sage',
-      'name': 'Mystic Sage',
-      'description': 'A seeker of knowledge, mastering the arcane arts.',
+      'archetype': 'broly',
+      'name': 'Broly',
+      'description':
+          'The Legendary Super Saiyan — raw, unstoppable physical power.',
+      'defaultStat': 'health',
+      'colorHex': '#43A047',
+    },
+    {
+      'archetype': 'goku',
+      'name': 'Goku',
+      'description': 'A warrior always hungry to learn the next technique.',
       'defaultStat': 'knowledge',
-      'colorHex': '#5B7FFF',
+      'colorHex': '#FF8C1A',
     },
     {
-      'archetype': 'rogue',
-      'name': 'Swift Rogue',
-      'description': 'Quick and cunning, balanced in all aspects.',
+      'archetype': 'roshi',
+      'name': 'Master Roshi',
+      'description': 'The Turtle Hermit — wise mentor, master of connection.',
       'defaultStat': 'social',
-      'colorHex': '#4ECDC4',
-    },
-    {
-      'archetype': 'guardian',
-      'name': 'Steadfast Guardian',
-      'description': 'Protector of wellness, radiating vitality.',
-      'defaultStat': 'health',
-      'colorHex': '#FF6B4A',
-    },
-    {
-      'archetype': 'mage',
-      'name': 'Arcane Mage',
-      'description': 'Master of mystical forces and transformation.',
-      'defaultStat': 'knowledge',
-      'colorHex': '#9D5FFF',
-    },
-    {
-      'archetype': 'druid',
-      'name': 'Natural Druid',
-      'description': 'Harmonious with nature, balanced and resilient.',
-      'defaultStat': 'health',
-      'colorHex': '#52C977',
+      'colorHex': '#F4B400',
     },
   ];
+
+  // Maps each archetype to its 3D model asset. Drop the matching .glb files
+  // into assets/models/ and register that folder in pubspec.yaml for these
+  // to resolve. Falls back to 'assets/models/default.glb' if an archetype
+  // isn't found here (see AvatarDisplay).
+  static const Map<String, String> avatarModels = {
+    'vegeta': 'assets/models/vegeta.glb',
+    'broly': 'assets/models/broly.glb',
+    'goku': 'assets/models/goku.glb',
+    'roshi': 'assets/models/roshi.glb',
+  };
 }

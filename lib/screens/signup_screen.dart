@@ -21,7 +21,17 @@ class _SignupScreenState extends State<SignupScreen>
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
+
   bool _loading = false;
+  bool _verifying = false;
+  bool _resending = false;
+
+  // Once signup succeeds, this page swaps to the code-entry view
+  // instead of navigating to a separate screen.
+  bool _showVerify = false;
+  String _pendingEmail = '';
+  String _pendingDisplayName = '';
 
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fade;
@@ -70,6 +80,7 @@ class _SignupScreenState extends State<SignupScreen>
     _confirmCtrl
       ..removeListener(_onChanged)
       ..dispose();
+    _codeCtrl.dispose();
     _fadeCtrl.dispose();
     super.dispose();
   }
@@ -114,10 +125,14 @@ class _SignupScreenState extends State<SignupScreen>
         return;
       }
 
-      // ── User was genuinely created in Auth ─────────────────────────────
+      // ── User was genuinely created — swap this page to the code view ──
       await PlayerProfileService().clear();
       if (!mounted) return;
-      _goToOnboarding(displayName);
+      setState(() {
+        _pendingEmail = email;
+        _pendingDisplayName = displayName;
+        _showVerify = true;
+      });
     } on AuthRetryableFetchException catch (_) {
       _showToast('Connection timed out. Check your internet and try again.');
     } on AuthException catch (e) {
@@ -129,10 +144,16 @@ class _SignupScreenState extends State<SignupScreen>
             'An account with this email already exists. Try logging in.');
       } else if (msg.contains('confirmation email') ||
           msg.contains('sending email')) {
-        // Only the email-delivery step failed; the user record itself
-        // was still created, so proceed to avatar selection.
-      if (!mounted) return;
-      _goToOnboarding(displayName);
+        // Account was created but the email failed to send — still show
+        // the code screen so they can hit "resend" once SMTP is fixed.
+        if (!mounted) return;
+        _showToast(
+            'Account created, but sending the code failed. Try resending it.');
+        setState(() {
+          _pendingEmail = email;
+          _pendingDisplayName = displayName;
+          _showVerify = true;
+        });
       } else {
         // Anything else (including unexpected_failure) is a real failure —
         // don't silently proceed as if signup worked.
@@ -145,6 +166,45 @@ class _SignupScreenState extends State<SignupScreen>
     }
   }
 
+  Future<void> _verifyCode() async {
+    final code = _codeCtrl.text.trim();
+    if (code.isEmpty || _verifying) return;
+
+    setState(() => _verifying = true);
+    try {
+      await Supabase.instance.client.auth.verifyOTP(
+        email: _pendingEmail,
+        token: code,
+        type: OtpType.email,
+      );
+
+      if (!mounted) return;
+      _goToOnboarding(_pendingDisplayName);
+    } on AuthException catch (e) {
+      _showToast(e.message);
+    } catch (e) {
+      _showToast('Verification failed: $e');
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
+  }
+
+  Future<void> _resendCode() async {
+    if (_resending) return;
+    setState(() => _resending = true);
+    try {
+      await Supabase.instance.client.auth.resend(
+        type: OtpType.signup,
+        email: _pendingEmail,
+      );
+      _showToast('Code resent.');
+    } on AuthException catch (e) {
+      _showToast(e.message);
+    } finally {
+      if (mounted) setState(() => _resending = false);
+    }
+  }
+
   void _goToOnboarding(String displayName) {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
@@ -152,58 +212,6 @@ class _SignupScreenState extends State<SignupScreen>
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 600),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  void _showEmailConfirmationDialog(String email) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppTheme.bg800,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(4),
-          side: const BorderSide(color: AppTheme.borderBright),
-        ),
-        title: Text(
-          'CONFIRM YOUR EMAIL',
-          style: AppTheme.displayFont(size: 14, color: AppTheme.text100),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'A confirmation link was sent to:',
-              style: AppTheme.monoFont(size: 12, color: AppTheme.text200),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              email,
-              style: AppTheme.monoFont(size: 12, color: AppTheme.copper),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Click the link in your email then come back and log in.',
-              style: AppTheme.monoFont(size: 12, color: AppTheme.text200),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(); // close dialog
-              Navigator.of(context).pop(); // go back to auth screen
-            },
-            child: Text(
-              'GO TO LOGIN',
-              style: AppTheme.monoFont(
-                  size: 12, color: AppTheme.copper, letterSpacing: 2),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -238,7 +246,16 @@ class _SignupScreenState extends State<SignupScreen>
                   child: Row(
                     children: [
                       GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
+                        onTap: () {
+                          if (_showVerify) {
+                            // Go back to the form view. Note: the account
+                            // already exists under _pendingEmail at this
+                            // point either way.
+                            setState(() => _showVerify = false);
+                          } else {
+                            Navigator.of(context).pop();
+                          }
+                        },
                         child: Container(
                           width: 36,
                           height: 36,
@@ -254,7 +271,7 @@ class _SignupScreenState extends State<SignupScreen>
                       ),
                       const SizedBox(width: 16),
                       Text(
-                        'SIGN UP',
+                        _showVerify ? 'VERIFY EMAIL' : 'SIGN UP',
                         style: AppTheme.displayFont(
                           size: 16,
                           color: AppTheme.text100,
@@ -267,135 +284,206 @@ class _SignupScreenState extends State<SignupScreen>
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 18),
-                        const GlitchText(
-                          text: 'CREATE\nOPERATOR',
-                          fontSize: 30,
-                          useDisplay: true,
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Register a new profile to enter the KarmaX system.',
-                          style: AppTheme.monoFont(
-                            size: 13,
-                            color: AppTheme.text200,
-                          ),
-                        ),
-                        const SizedBox(height: 30),
-                        Text(
-                          'DISPLAY NAME',
-                          style: AppTheme.monoFont(
-                            size: 10,
-                            color: AppTheme.text400,
-                            letterSpacing: 3,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _InputField(
-                          controller: _nameCtrl,
-                          hint: 'e.g. ALEX_99',
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 18),
-                        Text(
-                          'EMAIL',
-                          style: AppTheme.monoFont(
-                            size: 10,
-                            color: AppTheme.text400,
-                            letterSpacing: 3,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _InputField(
-                          controller: _emailCtrl,
-                          hint: 'e.g. alex@email.com',
-                          keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 18),
-                        Text(
-                          'PASSWORD',
-                          style: AppTheme.monoFont(
-                            size: 10,
-                            color: AppTheme.text400,
-                            letterSpacing: 3,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _InputField(
-                          controller: _passCtrl,
-                          hint: '••••••••',
-                          obscureText: true,
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 18),
-                        Text(
-                          'CONFIRM PASSWORD',
-                          style: AppTheme.monoFont(
-                            size: 10,
-                            color: AppTheme.text400,
-                            letterSpacing: 3,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _InputField(
-                          controller: _confirmCtrl,
-                          hint: '••••••••',
-                          obscureText: true,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _submit(),
-                        ),
-                        const SizedBox(height: 14),
-                        if (!passwordsMatch)
-                          Text(
-                            '> PASSWORDS DO NOT MATCH',
-                            style: AppTheme.monoFont(
-                              size: 11,
-                              color: AppTheme.copper,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        const SizedBox(height: 22),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppTheme.bg800,
-                            border: Border.all(color: AppTheme.borderDim),
-                          ),
-                          child: Text(
-                            '> STATUS: ${_loading ? 'CREATING PROFILE...' : _canSubmit ? 'READY' : 'INCOMPLETE'}',
-                            style: AppTheme.monoFont(
-                              size: 11,
-                              color: _loading
-                                  ? AppTheme.copper
-                                  : _canSubmit
-                                      ? AppTheme.text100
-                                      : AppTheme.text200,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: _showVerify
+                        ? _buildVerifyForm()
+                        : _buildSignupForm(passwordsMatch),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-                  child: _SubmitButton(
-                    label: _loading ? 'REGISTERING...' : 'REGISTER',
-                    enabled: _canSubmit && !_loading,
-                    onTap: _submit,
-                  ),
+                  child: _showVerify
+                      ? _SubmitButton(
+                          label: _verifying ? 'VERIFYING...' : 'VERIFY',
+                          enabled: !_verifying,
+                          onTap: _verifyCode,
+                        )
+                      : _SubmitButton(
+                          label: _loading ? 'REGISTERING...' : 'REGISTER',
+                          enabled: _canSubmit && !_loading,
+                          onTap: _submit,
+                        ),
                 ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSignupForm(bool passwordsMatch) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        const GlitchText(
+          text: 'CREATE\nOPERATOR',
+          fontSize: 30,
+          useDisplay: true,
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Register a new profile to enter the KarmaX system.',
+          style: AppTheme.monoFont(
+            size: 13,
+            color: AppTheme.text200,
+          ),
+        ),
+        const SizedBox(height: 30),
+        Text(
+          'DISPLAY NAME',
+          style: AppTheme.monoFont(
+            size: 10,
+            color: AppTheme.text400,
+            letterSpacing: 3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _InputField(
+          controller: _nameCtrl,
+          hint: 'e.g. ALEX_99',
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'EMAIL',
+          style: AppTheme.monoFont(
+            size: 10,
+            color: AppTheme.text400,
+            letterSpacing: 3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _InputField(
+          controller: _emailCtrl,
+          hint: 'e.g. alex@email.com',
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'PASSWORD',
+          style: AppTheme.monoFont(
+            size: 10,
+            color: AppTheme.text400,
+            letterSpacing: 3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _InputField(
+          controller: _passCtrl,
+          hint: '••••••••',
+          obscureText: true,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'CONFIRM PASSWORD',
+          style: AppTheme.monoFont(
+            size: 10,
+            color: AppTheme.text400,
+            letterSpacing: 3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _InputField(
+          controller: _confirmCtrl,
+          hint: '••••••••',
+          obscureText: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submit(),
+        ),
+        const SizedBox(height: 14),
+        if (!passwordsMatch)
+          Text(
+            '> PASSWORDS DO NOT MATCH',
+            style: AppTheme.monoFont(
+              size: 11,
+              color: AppTheme.copper,
+              letterSpacing: 1,
+            ),
+          ),
+        const SizedBox(height: 22),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.bg800,
+            border: Border.all(color: AppTheme.borderDim),
+          ),
+          child: Text(
+            '> STATUS: ${_loading ? 'CREATING PROFILE...' : _canSubmit ? 'READY' : 'INCOMPLETE'}',
+            style: AppTheme.monoFont(
+              size: 11,
+              color: _loading
+                  ? AppTheme.copper
+                  : _canSubmit
+                      ? AppTheme.text100
+                      : AppTheme.text200,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerifyForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        const GlitchText(
+          text: 'VERIFY\nEMAIL',
+          fontSize: 30,
+          useDisplay: true,
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Enter the code sent to $_pendingEmail',
+          style: AppTheme.monoFont(size: 13, color: AppTheme.text200),
+        ),
+        const SizedBox(height: 30),
+        Text(
+          'VERIFICATION CODE',
+          style: AppTheme.monoFont(
+            size: 10,
+            color: AppTheme.text400,
+            letterSpacing: 3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: AppTheme.borderBright),
+            color: AppTheme.bg800,
+          ),
+          child: TextField(
+            controller: _codeCtrl,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: AppTheme.monoFont(
+                size: 22, color: AppTheme.text100, letterSpacing: 8),
+            decoration: const InputDecoration(
+              hintText: '000000',
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(vertical: 18),
+            ),
+            onSubmitted: (_) => _verifyCode(),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Center(
+          child: TextButton(
+            onPressed: _resending ? null : _resendCode,
+            child: Text(
+              _resending ? 'RESENDING...' : 'RESEND CODE',
+              style: AppTheme.monoFont(
+                  size: 11, color: AppTheme.text400, letterSpacing: 2),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

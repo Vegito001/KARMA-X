@@ -13,12 +13,27 @@ class ProfileScreen extends StatefulWidget {
   final String playerName;
   final int level;
   final int completedQuests;
+  // Real growth stats (health/knowledge/discipline/social), the player's
+  // current day streak, and whether they've ever completed a quest before
+  // 6AM — all sourced from persisted data on the Dashboard rather than
+  // hardcoded here.
+  final Map<String, int> stats;
+  final int streak;
+  final bool everCompletedBeforeSixAM;
 
   const ProfileScreen({
     super.key,
     required this.playerName,
     required this.level,
     required this.completedQuests,
+    this.stats = const {
+      'health': 0,
+      'knowledge': 0,
+      'discipline': 0,
+      'social': 0,
+    },
+    this.streak = 0,
+    this.everCompletedBeforeSixAM = false,
   });
 
   @override
@@ -35,44 +50,56 @@ class _ProfileScreenState extends State<ProfileScreen>
   UserAvatarProgress? _avatarProgress;
   bool _avatarLoading = true;
 
-  final List<Map<String, dynamic>> _achievements = [
-    {
-      'title': 'FIRST BLOOD',
-      'desc': 'Complete your first quest',
-      'earned': true,
-      'icon': '⚔️',
-    },
-    {
-      'title': 'IRON WILL',
-      'desc': 'Maintain a 3-day streak',
-      'earned': true,
-      'icon': '🔩',
-    },
-    {
-      'title': 'MIND FORGE',
-      'desc': 'Reach 70+ Knowledge stat',
-      'earned': true,
-      'icon': '🧠',
-    },
-    {
-      'title': 'GHOST MODE',
-      'desc': 'Complete a quest before 6AM',
-      'earned': false,
-      'icon': '👻',
-    },
-    {
-      'title': 'APEX NODE',
-      'desc': 'Reach Level 10',
-      'earned': false,
-      'icon': '🔺',
-    },
-    {
-      'title': 'FULL STACK',
-      'desc': 'Max all 4 core stats',
-      'earned': false,
-      'icon': '⬛',
-    },
-  ];
+  // Computed from the real player data passed into this screen instead of
+  // a fixed true/false list — each achievement reflects actual progress.
+  List<Map<String, dynamic>> get _achievements {
+    final health = widget.stats['health'] ?? 0;
+    final knowledge = widget.stats['knowledge'] ?? 0;
+    final discipline = widget.stats['discipline'] ?? 0;
+    final social = widget.stats['social'] ?? 0;
+
+    return [
+      {
+        'title': 'FIRST BLOOD',
+        'desc': 'Complete your first quest',
+        'earned': widget.completedQuests >= 1,
+        'icon': '⚔️',
+      },
+      {
+        'title': 'IRON WILL',
+        'desc': 'Maintain a 3-day streak',
+        'earned': widget.streak >= 3,
+        'icon': '🔩',
+      },
+      {
+        'title': 'MIND FORGE',
+        'desc': 'Reach 70+ Knowledge stat',
+        'earned': knowledge >= 70,
+        'icon': '🧠',
+      },
+      {
+        'title': 'GHOST MODE',
+        'desc': 'Complete a quest before 6AM',
+        'earned': widget.everCompletedBeforeSixAM,
+        'icon': '👻',
+      },
+      {
+        'title': 'APEX NODE',
+        'desc': 'Reach Level 10',
+        'earned': widget.level >= 10,
+        'icon': '🔺',
+      },
+      {
+        'title': 'FULL STACK',
+        'desc': 'Max all 4 core stats',
+        'earned': health >= 100 &&
+            knowledge >= 100 &&
+            discipline >= 100 &&
+            social >= 100,
+        'icon': '⬛',
+      },
+    ];
+  }
 
   @override
   void initState() {
@@ -269,7 +296,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final stats = [
       {'label': 'LEVEL', 'value': '${widget.level}'},
       {'label': 'QUESTS', 'value': '${widget.completedQuests}'},
-      {'label': 'STREAK', 'value': '4'},
+      {'label': 'STREAK', 'value': '${widget.streak}'},
     ];
     return Row(
       children: stats.map((s) {
@@ -314,13 +341,29 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ),
           const SizedBox(height: 16),
-          const XpBar(current: 62, max: 100, label: '🏃 HEALTH'),
+          XpBar(
+            current: (widget.stats['health'] ?? 0).toDouble(),
+            max: 100,
+            label: '🏃 HEALTH',
+          ),
           const SizedBox(height: 12),
-          const XpBar(current: 74, max: 100, label: '📚 KNOWLEDGE'),
+          XpBar(
+            current: (widget.stats['knowledge'] ?? 0).toDouble(),
+            max: 100,
+            label: '📚 KNOWLEDGE',
+          ),
           const SizedBox(height: 12),
-          const XpBar(current: 55, max: 100, label: '⚡ DISCIPLINE'),
+          XpBar(
+            current: (widget.stats['discipline'] ?? 0).toDouble(),
+            max: 100,
+            label: '⚡ DISCIPLINE',
+          ),
           const SizedBox(height: 12),
-          const XpBar(current: 48, max: 100, label: '🧍 SOCIAL'),
+          XpBar(
+            current: (widget.stats['social'] ?? 0).toDouble(),
+            max: 100,
+            label: '🧍 SOCIAL',
+          ),
         ],
       ),
     );

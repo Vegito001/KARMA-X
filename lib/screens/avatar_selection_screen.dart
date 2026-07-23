@@ -28,13 +28,21 @@ class AvatarSelectionScreen extends StatefulWidget {
 
 class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
   late Future<List<Avatar>> avatarsFuture;
+  final PageController _pageController = PageController(viewportFraction: 1);
   String? selectedAvatarId;
+  int currentPage = 0;
   bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _loadAvatars();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   void _loadAvatars() {
@@ -81,6 +89,15 @@ class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  void _goToPage(int page, int itemCount) {
+    if (page < 0 || page >= itemCount) return;
+    _pageController.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -196,26 +213,91 @@ class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
               );
             }
 
+            // Default to the first avatar being "in view" once loaded, so
+            // Confirm works even if the user never swipes.
+            selectedAvatarId ??=
+                avatars[currentPage.clamp(0, avatars.length - 1)].id;
+
             return Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 4),
+                  child: Text(
+                    'Choose your character archetype. Your avatar will grow stronger as you complete quests and level up.',
+                    style: AppTheme.monoFont(
+                      size: 10,
+                      color: AppTheme.text200,
+                      letterSpacing: 1,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.all(24),
+                  child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      Text(
-                        'Choose your character archetype. Your avatar will grow stronger as you complete quests and level up.',
-                        style: AppTheme.monoFont(
-                          size: 10,
-                          color: AppTheme.text200,
-                          letterSpacing: 1,
-                        ),
-                        textAlign: TextAlign.center,
+                      PageView.builder(
+                        controller: _pageController,
+                        itemCount: avatars.length,
+                        onPageChanged: (index) {
+                          setState(() {
+                            currentPage = index;
+                            selectedAvatarId = avatars[index].id;
+                          });
+                        },
+                        itemBuilder: (context, index) =>
+                            _buildAvatarPage(avatars[index]),
                       ),
-                      const SizedBox(height: 28),
-                      ...avatars.map((avatar) => _buildAvatarCard(avatar)),
+                      // Left arrow
+                      if (avatars.length > 1)
+                        Positioned(
+                          left: 4,
+                          child: _NavArrow(
+                            icon: Icons.chevron_left,
+                            enabled: currentPage > 0,
+                            onTap: () =>
+                                _goToPage(currentPage - 1, avatars.length),
+                          ),
+                        ),
+                      // Right arrow
+                      if (avatars.length > 1)
+                        Positioned(
+                          right: 4,
+                          child: _NavArrow(
+                            icon: Icons.chevron_right,
+                            enabled: currentPage < avatars.length - 1,
+                            onTap: () =>
+                                _goToPage(currentPage + 1, avatars.length),
+                          ),
+                        ),
                     ],
                   ),
                 ),
+                if (avatars.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (int i = 0; i < avatars.length; i++)
+                          GestureDetector(
+                            onTap: () => _goToPage(i, avatars.length),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              width: i == currentPage ? 20 : 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: i == currentPage
+                                    ? AppTheme.mana
+                                    : AppTheme.borderDim,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 Container(
                   padding: EdgeInsets.fromLTRB(
                     24,
@@ -273,120 +355,235 @@ class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
     );
   }
 
-  Widget _buildAvatarCard(Avatar avatar) {
-    final isSelected = selectedAvatarId == avatar.id;
+  Widget _buildAvatarPage(Avatar avatar) {
     final previewProgress = UserAvatarProgress(
       id: 'preview-${avatar.id}',
       userId: 'preview',
       selectedAvatarId: avatar.id,
-      currentLevel: isSelected ? 5 : 1,
+      currentLevel: 5,
       dominantStat: avatar.defaultStat,
       equippedBadges: const [],
       lastUpdated: DateTime.now(),
     );
 
-    return GestureDetector(
-      onTap: () => setState(() => selectedAvatarId = avatar.id),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isSelected
-                ? [const Color(0xFF25265C), AppTheme.bg700]
-                : [AppTheme.bg800, AppTheme.bg900],
+    final statColor =
+        AvatarTheme.statColors[avatar.defaultStat] ?? AppTheme.copper;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Give the model most of the available height/width so it reads as
+        // the hero of the page — this is the thing the person is actually
+        // choosing, so it should dominate, not compete with the text below.
+        final modelSize =
+            (constraints.maxWidth * 0.8).clamp(240.0, 460.0).toDouble();
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 4),
+              _RotatableModel(
+                avatar: avatar,
+                progress: previewProgress,
+                size: modelSize,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                '// ARCHETYPE PROFILE',
+                style: AppTheme.monoFont(
+                  size: 9,
+                  color: AppTheme.copper,
+                  letterSpacing: 3,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                avatar.name.toUpperCase(),
+                style: AppTheme.displayFont(
+                  size: 24,
+                  color: AppTheme.text100,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: 36,
+                height: 2,
+                color: statColor,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                avatar.description,
+                style: AppTheme.monoFont(
+                  size: 11,
+                  color: AppTheme.text200,
+                  letterSpacing: 0.4,
+                ).copyWith(height: 1.6),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppTheme.bg800,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statColor.withValues(alpha: 0.6)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'DEFAULT AFFINITY  ',
+                      style: AppTheme.monoFont(
+                        size: 9,
+                        color: AppTheme.text400,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    Text(
+                      AvatarTheme.statEmojis[avatar.defaultStat] ?? '⭐',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      avatar.defaultStat.toUpperCase(),
+                      style: AppTheme.monoFont(
+                        size: 10,
+                        color: statColor,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? AppTheme.mana : AppTheme.borderDim,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppTheme.mana.withValues(alpha: 0.16),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          children: [
-            AvatarDisplay(
-              avatar: avatar,
-              progress: previewProgress,
-              size: 80,
+        );
+      },
+    );
+  }
+}
+
+/// Wraps [AvatarDisplay] with a brief, self-dismissing "drag to rotate"
+/// hint so people discover the model is interactive without needing a
+/// permanent on-screen instruction competing with the model itself.
+class _RotatableModel extends StatefulWidget {
+  final Avatar avatar;
+  final UserAvatarProgress progress;
+  final double size;
+
+  const _RotatableModel({
+    required this.avatar,
+    required this.progress,
+    required this.size,
+  });
+
+  @override
+  State<_RotatableModel> createState() => _RotatableModelState();
+}
+
+class _RotatableModelState extends State<_RotatableModel> {
+  bool _hintVisible = true;
+
+  void _dismissHint() {
+    if (_hintVisible) setState(() => _hintVisible = false);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 3), _dismissHint);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
+        children: [
+          Listener(
+            // Dismiss the hint the moment the person actually starts
+            // dragging on the model, however they get there.
+            onPointerDown: (_) => _dismissHint(),
+            child: AvatarDisplay(
+              avatar: widget.avatar,
+              progress: widget.progress,
+              size: widget.size,
               showBadges: false,
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    avatar.name.toUpperCase(),
-                    style: AppTheme.displayFont(
-                      size: 14,
-                      color: AppTheme.text100,
-                    ),
+          ),
+          AnimatedOpacity(
+            opacity: _hintVisible ? 1 : 0,
+            duration: const Duration(milliseconds: 400),
+            child: IgnorePointer(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bg900.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    avatar.description,
-                    style: AppTheme.monoFont(
-                      size: 9,
-                      color: AppTheme.text200,
-                      letterSpacing: 0.5,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
+                      const Icon(Icons.threesixty_rounded,
+                          size: 12, color: AppTheme.text400),
+                      const SizedBox(width: 5),
                       Text(
-                        'DEFAULT: ',
+                        'DRAG TO ROTATE',
                         style: AppTheme.monoFont(
                           size: 8,
                           color: AppTheme.text400,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      Text(
-                        AvatarTheme.statEmojis[avatar.defaultStat] ?? '⭐',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        avatar.defaultStat.toUpperCase(),
-                        style: AppTheme.monoFont(
-                          size: 8,
-                          color: AppTheme.text200,
-                          letterSpacing: 1,
+                          letterSpacing: 1.5,
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
-            if (isSelected)
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppTheme.mana.withValues(alpha: 0.2),
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: AppTheme.mana,
-                  size: 20,
-                ),
-              ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small circular chevron button used to page the carousel left/right.
+class _NavArrow extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _NavArrow({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.25,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppTheme.bg800.withValues(alpha: 0.85),
+            border: Border.all(color: AppTheme.borderDim),
+          ),
+          child: Icon(icon, color: AppTheme.text100, size: 22),
         ),
       ),
     );

@@ -7,7 +7,7 @@ import '../widgets/hci_condition_toggle.dart';
 import '../services/ai_service.dart';
 import '../services/hci_study_service.dart';
 import 'student_problem_screen.dart';
-import 'sus_survey_screen.dart';
+import 'student_quest_screen.dart';
 
 // ─────────────────────────────────────────────
 //  Quiz question model
@@ -65,9 +65,12 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
   // the A/B comparison has real numbers behind it (see hci_study_service.dart).
   final Map<int, DateTime> _shownAt = {};
   final Map<int, DateTime> _answeredAt = {}; // time of FIRST answer
-  final Map<int, DateTime> _lastModifiedAt = {}; // time of most recent answer change
-  final Map<int, int> _revisions = {}; // answer changed while viewing this question
-  final Map<int, int> _backtracks = {}; // times re-shown after navigating back via Previous
+  final Map<int, DateTime> _lastModifiedAt =
+      {}; // time of most recent answer change
+  final Map<int, int> _revisions =
+      {}; // answer changed while viewing this question
+  final Map<int, int> _backtracks =
+      {}; // times re-shown after navigating back via Previous
 
   // ── Loading animation ──────────────────────────────────────────────────
   int _loadStep = 0;
@@ -102,14 +105,15 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
       ..forward();
     _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
 
-    _slideCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400))..forward();
+    _slideCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400))
+      ..forward();
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero)
         .animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut));
 
     _progressCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 400));
-    _progressAnim =
-        Tween<double>(begin: 0, end: 0).animate(_progressCtrl);
+    _progressAnim = Tween<double>(begin: 0, end: 0).animate(_progressCtrl);
 
     _pulseCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 900))
@@ -140,13 +144,13 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
     try {
       final result = await AiService().generateQuizQuestions(
         problemTitle: widget.problem.title,
-        causes: widget.selectedCauses, problemSummary: '',
+        causes: widget.selectedCauses,
+        problemSummary: '',
       );
 
       final rawList = result['questions'] as List<dynamic>;
       final questions = rawList
-          .map((e) =>
-              QuizQuestion.fromJson(e as Map<String, dynamic>))
+          .map((e) => QuizQuestion.fromJson(e as Map<String, dynamic>))
           .where((q) => q.question.isNotEmpty && q.options.length == 4)
           .toList();
 
@@ -266,14 +270,12 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
   void _generateQuests() {
     final answerTexts = List.generate(
       _questions.length,
-      (i) => _answers.containsKey(i)
-          ? _questions[i].options[_answers[i]!]
-          : '',
+      (i) => _answers.containsKey(i) ? _questions[i].options[_answers[i]!] : '',
     ).where((s) => s.isNotEmpty).toList();
 
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => SusSurveyScreen(
+        pageBuilder: (_, __, ___) => StudentQuestScreen(
           playerName: widget.playerName,
           schedule: widget.schedule,
           problem: widget.problem,
@@ -290,8 +292,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
   // ── Fallback questions (if AI fails) ──────────────────────────────────
   List<QuizQuestion> _fallbackQuestions() => [
         QuizQuestion(
-          question:
-              'How long have you been dealing with this challenge?',
+          question: 'How long have you been dealing with this challenge?',
           options: [
             'Just started recently',
             'A few weeks',
@@ -318,8 +319,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
           ],
         ),
         QuizQuestion(
-          question:
-              'Have you tried to solve this before? What happened?',
+          question: 'Have you tried to solve this before? What happened?',
           options: [
             'Never really tried systematically',
             'Tried but gave up after a few days',
@@ -328,8 +328,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
           ],
         ),
         QuizQuestion(
-          question:
-              'What would solving this problem change for you most?',
+          question: 'What would solving this problem change for you most?',
           options: [
             'My grades and academic performance',
             'My mental health and stress levels',
@@ -367,14 +366,12 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                   children: [
                     // ── TOP BAR ──
                     Padding(
-                      padding:
-                          const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(
                                 child: Text(
@@ -403,12 +400,10 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                               color: AppTheme.bg600,
                               child: AnimatedBuilder(
                                 animation: _progressAnim,
-                                builder: (_, __) =>
-                                    FractionallySizedBox(
+                                builder: (_, __) => FractionallySizedBox(
                                   alignment: Alignment.centerLeft,
                                   widthFactor: _progressAnim.value,
-                                  child: Container(
-                                      color: AppTheme.copper),
+                                  child: Container(color: AppTheme.copper),
                                 ),
                               ),
                             ),
@@ -424,22 +419,20 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                                     border: Border.all(
                                         color: AppTheme.mana
                                             .withValues(alpha: 0.5)),
-                                    color: AppTheme.mana
-                                        .withValues(alpha: 0.06),
+                                    color:
+                                        AppTheme.mana.withValues(alpha: 0.06),
                                   ),
                                   child: Text(
                                     '✦ AI-GENERATED FOR YOUR PROBLEM',
                                     style: AppTheme.monoFont(
-                                        size: 9,
-                                        color: AppTheme.mana),
+                                        size: 9, color: AppTheme.mana),
                                   ),
                                 ),
                                 if (_loadError != null) ...[
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding:
-                                        const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 3),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
                                       border: Border.all(
                                           color: AppTheme.copper
@@ -448,8 +441,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                                     child: Text(
                                       'FALLBACK MODE',
                                       style: AppTheme.monoFont(
-                                          size: 9,
-                                          color: AppTheme.copper),
+                                          size: 9, color: AppTheme.copper),
                                     ),
                                   ),
                                 ]
@@ -474,8 +466,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                     // ── NAV BUTTONS ──
                     if (!_quizComplete)
                       Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
                         child: Row(
                           children: [
                             if (_current > 0)
@@ -488,16 +479,14 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                                         vertical: 16),
                                     decoration: BoxDecoration(
                                       border: Border.all(
-                                          color:
-                                              AppTheme.borderBright),
+                                          color: AppTheme.borderBright),
                                       color: AppTheme.bg800,
                                     ),
                                     child: Center(
                                       child: Text(
                                         '<  BACK',
                                         style: AppTheme.monoFont(
-                                            size: 12,
-                                            color: AppTheme.text200),
+                                            size: 12, color: AppTheme.text200),
                                       ),
                                     ),
                                   ),
@@ -507,14 +496,12 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                             Expanded(
                               flex: 2,
                               child: GestureDetector(
-                                onTap: _answers[_current] != null
-                                    ? _next
-                                    : null,
+                                onTap:
+                                    _answers[_current] != null ? _next : null,
                                 child: AnimatedContainer(
-                                  duration:
-                                      const Duration(milliseconds: 220),
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 16),
+                                  duration: const Duration(milliseconds: 220),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
                                   decoration: BoxDecoration(
                                     color: _answers[_current] != null
                                         ? AppTheme.copper
@@ -527,14 +514,12 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                                   ),
                                   child: Center(
                                     child: Text(
-                                      _current ==
-                                              _questions.length - 1
+                                      _current == _questions.length - 1
                                           ? 'FINISH QUIZ  >'
                                           : 'NEXT  >',
                                       style: AppTheme.displayFont(
                                         size: 12,
-                                        color: _answers[_current] !=
-                                                null
+                                        color: _answers[_current] != null
                                             ? AppTheme.bg900
                                             : AppTheme.text400,
                                       ),
@@ -549,14 +534,12 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
 
                     if (_quizComplete)
                       Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
                         child: GestureDetector(
                           onTap: _generateQuests,
                           child: Container(
                             width: double.infinity,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 18),
+                            padding: const EdgeInsets.symmetric(vertical: 18),
                             decoration:
                                 const BoxDecoration(color: AppTheme.copper),
                             child: Center(
@@ -575,7 +558,6 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
       ),
     );
   }
-
 
   // ══════════════════════════════════════════════════════════════════
   //  CONDITION B — GESTALT REDESIGN
@@ -600,14 +582,17 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                           ? _gestaltCompleteView()
                           : FadeTransition(
                               opacity: _fade,
-                              child: SlideTransition(position: _slideAnim, child: _gestaltQuestion()),
+                              child: SlideTransition(
+                                  position: _slideAnim,
+                                  child: _gestaltQuestion()),
                             ),
                     ),
                     if (!_quizComplete) _gestaltNavBar(),
                     if (_quizComplete)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                        child: _gestaltCtaButton('GENERATE MY LIFE QUESTS  ⚡', _generateQuests),
+                        child: _gestaltCtaButton(
+                            'GENERATE MY LIFE QUESTS  ⚡', _generateQuests),
                       ),
                   ]),
           ),
@@ -620,45 +605,80 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
   Widget _gestaltProgressDots() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.borderDim, width: 1))),
+      decoration: const BoxDecoration(
+          border:
+              Border(bottom: BorderSide(color: AppTheme.borderDim, width: 1))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Expanded(child: Text('AI QUIZ  ·  ${widget.problem.title.toUpperCase()}',
-              style: AppTheme.monoFont(size: 9, color: AppTheme.mana, letterSpacing: 1),
-              overflow: TextOverflow.ellipsis)),
+          Expanded(
+              child: Text('AI QUIZ  ·  ${widget.problem.title.toUpperCase()}',
+                  style: AppTheme.monoFont(
+                      size: 9, color: AppTheme.mana, letterSpacing: 1),
+                  overflow: TextOverflow.ellipsis)),
           if (_loadError != null)
-            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(border: Border.all(color: AppTheme.copper.withValues(alpha: 0.5))),
-              child: Text('FALLBACK', style: AppTheme.monoFont(size: 8, color: AppTheme.copper))),
+            Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                    border: Border.all(
+                        color: AppTheme.copper.withValues(alpha: 0.5))),
+                child: Text('FALLBACK',
+                    style: AppTheme.monoFont(size: 8, color: AppTheme.copper))),
         ]),
         const SizedBox(height: 14),
         Row(
-          children: List.generate(_questions.isEmpty ? 5 : _questions.length, (i) {
+          children:
+              List.generate(_questions.isEmpty ? 5 : _questions.length, (i) {
             final isDone = i < _current;
             final isActive = i == _current;
-            return Expanded(child: Row(children: [
-              Expanded(child: AnimatedContainer(
+            return Expanded(
+                child: Row(children: [
+              Expanded(
+                  child: AnimatedContainer(
                 duration: const Duration(milliseconds: 350),
-                height: isActive ? 10 : 8, width: isActive ? 10 : 8,
+                height: isActive ? 10 : 8,
+                width: isActive ? 10 : 8,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isDone ? AppTheme.mana : isActive ? AppTheme.copper : AppTheme.bg500,
-                  boxShadow: isActive ? [BoxShadow(color: AppTheme.copper.withValues(alpha: 0.5), blurRadius: 8, spreadRadius: 1)] :
-                             isDone  ? [BoxShadow(color: AppTheme.mana.withValues(alpha: 0.3), blurRadius: 4)] : null,
+                  color: isDone
+                      ? AppTheme.mana
+                      : isActive
+                          ? AppTheme.copper
+                          : AppTheme.bg500,
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                              color: AppTheme.copper.withValues(alpha: 0.5),
+                              blurRadius: 8,
+                              spreadRadius: 1)
+                        ]
+                      : isDone
+                          ? [
+                              BoxShadow(
+                                  color: AppTheme.mana.withValues(alpha: 0.3),
+                                  blurRadius: 4)
+                            ]
+                          : null,
                 ),
               )),
               if (i < (_questions.isEmpty ? 4 : _questions.length - 1))
-                Expanded(flex: 3, child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 350), height: 2,
-                  color: isDone ? AppTheme.mana.withValues(alpha: 0.5) : AppTheme.bg500,
-                )),
+                Expanded(
+                    flex: 3,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 350),
+                      height: 2,
+                      color: isDone
+                          ? AppTheme.mana.withValues(alpha: 0.5)
+                          : AppTheme.bg500,
+                    )),
             ]));
           }),
         ),
         const SizedBox(height: 8),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('Q.${_current + 1} of ${_questions.length}', style: AppTheme.monoFont(size: 9, color: AppTheme.text400)),
-          Text('${_questions.length - _current - 1} remaining', style: AppTheme.monoFont(size: 9, color: AppTheme.text600)),
+          Text('Q.${_current + 1} of ${_questions.length}',
+              style: AppTheme.monoFont(size: 9, color: AppTheme.text400)),
+          Text('${_questions.length - _current - 1} remaining',
+              style: AppTheme.monoFont(size: 9, color: AppTheme.text600)),
         ]),
       ]),
     );
@@ -676,15 +696,22 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
           width: double.infinity,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-              colors: [AppTheme.bg700, AppTheme.bg800]),
+            gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppTheme.bg700, AppTheme.bg800]),
             border: Border.all(color: AppTheme.bg500),
-            borderRadius: const BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8)),
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8), topRight: Radius.circular(8)),
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('QUESTION ${_current + 1}', style: AppTheme.monoFont(size: 9, color: AppTheme.mana, letterSpacing: 2)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('QUESTION ${_current + 1}',
+                style: AppTheme.monoFont(
+                    size: 9, color: AppTheme.mana, letterSpacing: 2)),
             const SizedBox(height: 10),
-            Text(q.question, style: AppTheme.displayFont(size: 16, color: AppTheme.text100)),
+            Text(q.question,
+                style: AppTheme.displayFont(size: 16, color: AppTheme.text100)),
           ]),
         ),
         // PROXIMITY — options in same card, zero gap from question
@@ -696,7 +723,9 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
               right: BorderSide(color: AppTheme.bg500),
               bottom: BorderSide(color: AppTheme.bg500),
             ),
-            borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(8), bottomRight: Radius.circular(8)),
+            borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(8),
+                bottomRight: Radius.circular(8)),
           ),
           child: Column(
             children: q.options.asMap().entries.map((e) {
@@ -706,43 +735,75 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                 onTap: () => _selectAnswer(e.key),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
                   decoration: BoxDecoration(
                     // FIGURE/GROUND — selected rises with bg + glow
-                    color: selected ? AppTheme.copper.withValues(alpha: 0.10) : Colors.transparent,
+                    color: selected
+                        ? AppTheme.copper.withValues(alpha: 0.10)
+                        : Colors.transparent,
                     border: Border(
-                      top: const BorderSide(color: AppTheme.borderDim, width: 1),
+                      top:
+                          const BorderSide(color: AppTheme.borderDim, width: 1),
                       // strong left accent on selected = unmistakable figure
-                      left: BorderSide(color: selected ? AppTheme.copper : Colors.transparent, width: 3),
+                      left: BorderSide(
+                          color:
+                              selected ? AppTheme.copper : Colors.transparent,
+                          width: 3),
                     ),
                     borderRadius: isLast
-                        ? const BorderRadius.only(bottomLeft: Radius.circular(8), bottomRight: Radius.circular(8))
+                        ? const BorderRadius.only(
+                            bottomLeft: Radius.circular(8),
+                            bottomRight: Radius.circular(8))
                         : BorderRadius.zero,
                   ),
                   child: Row(children: [
                     // SIMILARITY — all radio circles IDENTICAL until tapped
                     AnimatedContainer(
-                      duration: const Duration(milliseconds: 200), width: 18, height: 18,
+                      duration: const Duration(milliseconds: 200),
+                      width: 18,
+                      height: 18,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: selected ? AppTheme.copper : Colors.transparent,
-                        border: Border.all(color: selected ? AppTheme.copper : AppTheme.bg500, width: 2),
-                        boxShadow: selected ? [BoxShadow(color: AppTheme.copper.withValues(alpha: 0.4), blurRadius: 8)] : null,
+                        border: Border.all(
+                            color: selected ? AppTheme.copper : AppTheme.bg500,
+                            width: 2),
+                        boxShadow: selected
+                            ? [
+                                BoxShadow(
+                                    color:
+                                        AppTheme.copper.withValues(alpha: 0.4),
+                                    blurRadius: 8)
+                              ]
+                            : null,
                       ),
-                      child: selected ? const Icon(Icons.check, size: 11, color: Color(0xFF070818)) : null,
+                      child: selected
+                          ? const Icon(Icons.check,
+                              size: 11, color: Color(0xFF070818))
+                          : null,
                     ),
                     const SizedBox(width: 14),
-                    Expanded(child: Text(e.value, style: AppTheme.monoFont(size: 13,
-                        color: selected ? AppTheme.text100 : AppTheme.text400))),
+                    Expanded(
+                        child: Text(e.value,
+                            style: AppTheme.monoFont(
+                                size: 13,
+                                color: selected
+                                    ? AppTheme.text100
+                                    : AppTheme.text400))),
                     if (selected)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 3),
                         decoration: BoxDecoration(
                           color: AppTheme.copper.withValues(alpha: 0.15),
-                          border: Border.all(color: AppTheme.copper.withValues(alpha: 0.4)),
+                          border: Border.all(
+                              color: AppTheme.copper.withValues(alpha: 0.4)),
                           borderRadius: BorderRadius.circular(3),
                         ),
-                        child: Text('SELECTED', style: AppTheme.monoFont(size: 8, color: AppTheme.copper)),
+                        child: Text('SELECTED',
+                            style: AppTheme.monoFont(
+                                size: 8, color: AppTheme.copper)),
                       ),
                   ]),
                 ),
@@ -752,7 +813,8 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
         ),
         if (_answers[_current] == null) ...[
           const SizedBox(height: 12),
-          Text('tap an option to continue', style: AppTheme.monoFont(size: 10, color: AppTheme.text600)),
+          Text('tap an option to continue',
+              style: AppTheme.monoFont(size: 10, color: AppTheme.text600)),
         ],
       ]),
     );
@@ -765,7 +827,8 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       decoration: BoxDecoration(
         color: AppTheme.bg900.withValues(alpha: 0.95),
-        border: const Border(top: BorderSide(color: AppTheme.borderDim, width: 1)),
+        border:
+            const Border(top: BorderSide(color: AppTheme.borderDim, width: 1)),
       ),
       child: Row(children: [
         if (_current > 0) ...[
@@ -774,10 +837,12 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
-                color: AppTheme.bg800, border: Border.all(color: AppTheme.bg500),
+                color: AppTheme.bg800,
+                border: Border.all(color: AppTheme.bg500),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Icon(Icons.arrow_back_ios_new, color: AppTheme.text400, size: 16),
+              child: const Icon(Icons.arrow_back_ios_new,
+                  color: AppTheme.text400, size: 16),
             ),
           ),
           const SizedBox(width: 12),
@@ -791,11 +856,23 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
               decoration: BoxDecoration(
                 color: answered ? AppTheme.copper : AppTheme.bg700,
                 borderRadius: BorderRadius.circular(4),
-                boxShadow: answered ? [BoxShadow(color: AppTheme.copper.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 4))] : null,
+                boxShadow: answered
+                    ? [
+                        BoxShadow(
+                            color: AppTheme.copper.withValues(alpha: 0.3),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4))
+                      ]
+                    : null,
               ),
-              child: Center(child: Text(
-                _current == _questions.length - 1 ? 'FINISH QUIZ  ›' : 'NEXT  ›',
-                style: AppTheme.displayFont(size: 12, color: answered ? AppTheme.bg900 : AppTheme.text600),
+              child: Center(
+                  child: Text(
+                _current == _questions.length - 1
+                    ? 'FINISH QUIZ  ›'
+                    : 'NEXT  ›',
+                style: AppTheme.displayFont(
+                    size: 12,
+                    color: answered ? AppTheme.bg900 : AppTheme.text600),
               )),
             ),
           ),
@@ -808,12 +885,21 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
-          color: AppTheme.copper, borderRadius: BorderRadius.circular(4),
-          boxShadow: [BoxShadow(color: AppTheme.copper.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6))],
+          color: AppTheme.copper,
+          borderRadius: BorderRadius.circular(4),
+          boxShadow: [
+            BoxShadow(
+                color: AppTheme.copper.withValues(alpha: 0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 6))
+          ],
         ),
-        child: Center(child: Text(label, style: AppTheme.displayFont(size: 13, color: AppTheme.bg900))),
+        child: Center(
+            child: Text(label,
+                style: AppTheme.displayFont(size: 13, color: AppTheme.bg900))),
       ),
     );
   }
@@ -823,31 +909,53 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Row(children: List.generate(_questions.length, (i) => Expanded(child: Row(children: [
-            Expanded(child: Container(width: 12, height: 12,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.mana))),
-            if (i < _questions.length - 1)
-              Expanded(flex: 3, child: Container(height: 2, color: AppTheme.mana.withValues(alpha: 0.5))),
-          ])))),
+          Row(
+              children: List.generate(
+                  _questions.length,
+                  (i) => Expanded(
+                          child: Row(children: [
+                        Expanded(
+                            child: Container(
+                                width: 12,
+                                height: 12,
+                                decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppTheme.mana))),
+                        if (i < _questions.length - 1)
+                          Expanded(
+                              flex: 3,
+                              child: Container(
+                                  height: 2,
+                                  color: AppTheme.mana.withValues(alpha: 0.5))),
+                      ])))),
           const SizedBox(height: 32),
-          const GlitchText(text: 'ANALYSIS\nCOMPLETE', fontSize: 30, useDisplay: true),
+          const GlitchText(
+              text: 'ANALYSIS\nCOMPLETE', fontSize: 30, useDisplay: true),
           const SizedBox(height: 16),
-          Text('All ${_questions.length} questions answered.\nYour behaviour pattern has been mapped.',
-              textAlign: TextAlign.center, style: AppTheme.monoFont(size: 13, color: AppTheme.text200)),
+          Text(
+              'All ${_questions.length} questions answered.\nYour behaviour pattern has been mapped.',
+              textAlign: TextAlign.center,
+              style: AppTheme.monoFont(size: 13, color: AppTheme.text200)),
           const SizedBox(height: 28),
           Container(
-            width: double.infinity, padding: const EdgeInsets.all(18),
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: AppTheme.bg800,
               border: Border.all(color: AppTheme.mana.withValues(alpha: 0.4)),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _summaryRow('PROBLEM', widget.problem.title, AppTheme.mana),
               const SizedBox(height: 8),
-              _summaryRow('CAUSES', '${widget.selectedCauses.length} identified', AppTheme.mana),
+              _summaryRow('CAUSES',
+                  '${widget.selectedCauses.length} identified', AppTheme.mana),
               const SizedBox(height: 8),
-              _summaryRow('QUIZ', '${_questions.length}/${_questions.length} complete', AppTheme.mana),
+              _summaryRow(
+                  'QUIZ',
+                  '${_questions.length}/${_questions.length} complete',
+                  AppTheme.mana),
               const SizedBox(height: 8),
               _summaryRow('ENGINE', 'GEMINI AI', AppTheme.copper),
             ]),
@@ -859,9 +967,13 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
 
   Widget _summaryRow(String label, String value, Color color) {
     return Row(children: [
-      SizedBox(width: 72, child: Text('> $label', style: AppTheme.monoFont(size: 10, color: AppTheme.text400))),
+      SizedBox(
+          width: 72,
+          child: Text('> $label',
+              style: AppTheme.monoFont(size: 10, color: AppTheme.text400))),
       Text(' : ', style: AppTheme.monoFont(size: 10, color: AppTheme.text600)),
-      Expanded(child: Text(value, style: AppTheme.monoFont(size: 11, color: color))),
+      Expanded(
+          child: Text(value, style: AppTheme.monoFont(size: 11, color: color))),
     ]);
   }
 
@@ -877,8 +989,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
               animation: _pulse,
               builder: (_, __) => Opacity(
                 opacity: _pulse.value,
-                child:
-                    const Text('🧠', style: TextStyle(fontSize: 48)),
+                child: const Text('🧠', style: TextStyle(fontSize: 48)),
               ),
             ),
             const SizedBox(height: 28),
@@ -891,8 +1002,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
             Text(
               'Gemini AI is creating questions specific\nto your exact problem.',
               textAlign: TextAlign.center,
-              style:
-                  AppTheme.monoFont(size: 12, color: AppTheme.text400),
+              style: AppTheme.monoFont(size: 12, color: AppTheme.text400),
             ),
             const SizedBox(height: 28),
             ..._loadLines.asMap().entries.map((e) => AnimatedOpacity(
@@ -902,8 +1012,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(
                       e.value,
-                      style: AppTheme.monoFont(
-                          size: 11, color: AppTheme.mana),
+                      style: AppTheme.monoFont(size: 11, color: AppTheme.mana),
                     ),
                   ),
                 )),
@@ -912,8 +1021,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
               width: 200,
               child: LinearProgressIndicator(
                 backgroundColor: AppTheme.bg700,
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(AppTheme.copper),
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.copper),
               ),
             ),
           ],
@@ -949,16 +1057,12 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
-                  color: selected
-                      ? AppTheme.copperFaint
-                      : AppTheme.bg800,
+                  color: selected ? AppTheme.copperFaint : AppTheme.bg800,
                   border: Border.all(
-                    color: selected
-                        ? AppTheme.copper
-                        : AppTheme.borderDim,
+                    color: selected ? AppTheme.copper : AppTheme.borderDim,
                     width: selected ? 1.5 : 1,
                   ),
                 ),
@@ -970,9 +1074,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                       height: 14,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: selected
-                            ? AppTheme.copper
-                            : Colors.transparent,
+                        color: selected ? AppTheme.copper : Colors.transparent,
                         border: Border.all(
                           color: selected
                               ? AppTheme.copper
@@ -987,9 +1089,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                         e.value,
                         style: AppTheme.monoFont(
                           size: 12,
-                          color: selected
-                              ? AppTheme.text100
-                              : AppTheme.text200,
+                          color: selected ? AppTheme.text100 : AppTheme.text200,
                         ),
                       ),
                     ),
@@ -1023,8 +1123,7 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
             Text(
               'All ${_questions.length} AI-generated questions answered.\nYour behaviour pattern has been mapped.',
               textAlign: TextAlign.center,
-              style:
-                  AppTheme.monoFont(size: 13, color: AppTheme.text200),
+              style: AppTheme.monoFont(size: 13, color: AppTheme.text200),
             ),
             const SizedBox(height: 24),
             Container(
@@ -1038,26 +1137,22 @@ class _StudentQuizScreenState extends State<StudentQuizScreen>
                 children: [
                   Text(
                     '> PROBLEM : ${widget.problem.title}',
-                    style: AppTheme.monoFont(
-                        size: 11, color: AppTheme.mana),
+                    style: AppTheme.monoFont(size: 11, color: AppTheme.mana),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     '> CAUSES  : ${widget.selectedCauses.length} identified',
-                    style: AppTheme.monoFont(
-                        size: 11, color: AppTheme.mana),
+                    style: AppTheme.monoFont(size: 11, color: AppTheme.mana),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     '> QUIZ    : ${_questions.length}/${_questions.length} complete',
-                    style: AppTheme.monoFont(
-                        size: 11, color: AppTheme.mana),
+                    style: AppTheme.monoFont(size: 11, color: AppTheme.mana),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     '> ENGINE  : GEMINI AI (FREE)',
-                    style: AppTheme.monoFont(
-                        size: 11, color: AppTheme.copper),
+                    style: AppTheme.monoFont(size: 11, color: AppTheme.copper),
                   ),
                 ],
               ),

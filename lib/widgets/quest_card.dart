@@ -8,6 +8,9 @@ class QuestCard extends StatefulWidget {
   final bool completed;
   final VoidCallback? onComplete;
   final int index;
+  // One-line "why" description tying the quest back to the student's
+  // problem — optional because manually-created quests may not have one.
+  final String? description;
 
   const QuestCard({
     super.key,
@@ -17,6 +20,7 @@ class QuestCard extends StatefulWidget {
     this.completed = false,
     this.onComplete,
     this.index = 0,
+    this.description,
   });
 
   @override
@@ -129,6 +133,22 @@ class _QuestCardState extends State<QuestCard>
                           decorationColor: AppTheme.text400,
                         ),
                       ),
+                      if (widget.description != null &&
+                          widget.description!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.description!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.uiFont(
+                            size: 11.5,
+                            weight: FontWeight.w500,
+                            color: _localCompleted
+                                ? AppTheme.text600
+                                : AppTheme.text400,
+                          ).copyWith(height: 1.3),
+                        ),
+                      ],
                       const SizedBox(height: 5),
                       Row(
                         children: [

@@ -1,10 +1,11 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../theme/app_theme.dart';
 import '../theme/avatar_theme.dart';
 import '../models/avatar.dart';
 import '../models/avatar_composition.dart';
 import '../models/user_avatar_progress.dart';
-import 'interactive_avatar_painter.dart';
 
 class AvatarDisplay extends StatefulWidget {
   final Avatar avatar;
@@ -65,13 +66,38 @@ class _AvatarDisplayState extends State<AvatarDisplay>
     super.dispose();
   }
 
+  /// Flutter web nests declared assets under an extra `assets/` folder at
+  /// build time, so a path declared in pubspec.yaml as e.g.
+  /// 'assets/models/vegeta.glb' is actually served at
+  /// 'assets/assets/models/vegeta.glb'. model_viewer_plus renders the model
+  /// inside an embedded iframe/webview, so a wrong path fails silently
+  /// (blank box, no Dart error) rather than throwing. This only applies on
+  /// web — mobile/desktop asset bundling doesn't double the prefix.
+  String _resolveModelPath(String path) {
+    if (kIsWeb && path.startsWith('assets/')) {
+      return 'assets/$path';
+    }
+    return path;
+  }
+
   @override
   Widget build(BuildContext context) {
     final statColor = AvatarTheme.statColors[widget.progress.dominantStat] ??
         const Color(0xFFc8d8cc);
+
+    // Composition (hair/body/skin) is no longer used for rendering now that
+    // the 2D painter has been swapped for real 3D models, but it's kept
+    // available here in case you want to fall back to the 2D look for an
+    // archetype that doesn't have a model yet.
+    // ignore: unused_local_variable
     final composition = AvatarComposition.forArchetype(
       archetype: widget.avatar.archetype,
       level: widget.progress.currentLevel,
+    );
+
+    final modelPath = _resolveModelPath(
+      AvatarTheme.avatarModels[widget.avatar.archetype] ??
+          'assets/models/default.glb',
     );
 
     return GestureDetector(
@@ -118,19 +144,30 @@ class _AvatarDisplayState extends State<AvatarDisplay>
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    AnimatedBuilder(
-                      animation: _avatarCtrl,
-                      builder: (context, _) {
-                        return CustomPaint(
-                          size: Size.square(widget.size),
-                          painter: InteractiveAvatarPainter(
-                            composition: composition,
-                            baseColor: statColor,
-                            animationValue: _avatarCtrl.value,
-                            animationState: widget.animationState,
-                          ),
-                        );
-                      },
+                    SizedBox(
+                      width: widget.size,
+                      height: widget.size,
+                      child: ModelViewer(
+                        key: ValueKey(widget.avatar.archetype),
+                        src: modelPath,
+                        alt: widget.avatar.name,
+                        autoRotate:
+                            widget.animationState == AvatarAnimationState.idle,
+                        autoRotateDelay: 0,
+                        rotationPerSecond: '18deg',
+                        // Lets the user grab-and-drag (mouse) or swipe (touch)
+                        // to rotate the model manually. model-viewer pauses
+                        // auto-rotate automatically while the user is
+                        // interacting, then resumes after autoRotateDelay.
+                        cameraControls: true,
+                        disableZoom: false,
+                        backgroundColor: Colors.transparent,
+                        // 'auto' lets the model choose its own default camera
+                        // distance/angle; tweak per-model if one looks too
+                        // close/far or off-center once you've added real .glb
+                        // files.
+                        cameraOrbit: '0deg 75deg auto',
+                      ),
                     ),
                     Positioned(
                       left: 6,
