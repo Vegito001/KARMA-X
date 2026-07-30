@@ -11,6 +11,10 @@ import '../models/avatar_composition.dart';
 import '../models/user_avatar_progress.dart';
 import '../services/avatar_service.dart';
 import '../services/ai_service.dart';
+// Countdown display is temporarily disabled (see TEMP comments in
+// _buildQuestView) — this import is kept so it's a one-line change to
+// bring it back later.
+// ignore: unused_import
 import '../widgets/countdown_chip.dart';
 import 'profile_screen.dart';
 import 'student_problem_screen.dart';
@@ -46,14 +50,14 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // All of these start at sensible fresh-player defaults and are
   // overwritten by the real values from Supabase (user_avatar_progress)
   // as soon as _loadAvatarData() resolves — see below. Previously XP
   // defaulted to a hardcoded 340 and level to a hardcoded 7 regardless of
   // the actual player.
   int _currentXP = 0;
-  final int _maxXP = 500;
+  final int _maxXP = 200;
   int _level = 1;
   int _completedQuests = 0;
   bool _showLevelUp = false;
@@ -89,10 +93,19 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   List<Map<String, dynamic>> _dailyQuests = [];
   List<Map<String, dynamic>> _weeklyQuests = [];
+  // Whether the "Completed" sub-section is expanded, per quest type.
+  // Collapsed by default so a busy day doesn't bury the active quests.
+  bool _dailyCompletedExpanded = false;
+  bool _weeklyCompletedExpanded = false;
+  // True once a batch's countdown has hit zero — quests lock (no more
+  // completing) and a small refresh button replaces the countdown chip.
+  bool _dailyExpired = false;
+  bool _weeklyExpired = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Safety net: the dashboard is the "between attempts" home screen, so
     // if a previous quiz attempt was abandoned (closed without finishing
@@ -152,65 +165,82 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (user == null) return;
 
     try {
-      // Pull everything (not just unexpired rows) so we can tell the
-      // difference between "no quests were ever generated" and "the last
-      // batch expired while the app was closed" — the latter should
-      // trigger an immediate refresh instead of showing an empty state.
       final rows = await Supabase.instance.client
           .from('quests')
           .select()
           .eq('user_id', user.id)
           .order('created_at');
 
-      final daily = <Map<String, dynamic>>[];
-      final weekly = <Map<String, dynamic>>[];
-      final now = DateTime.now();
-      var sawDaily = false;
-      var sawWeekly = false;
-      var dailyAllExpired = true;
-      var weeklyAllExpired = true;
-
+      // _saveFreshQuests deletes the previous batch before inserting the
+      // new one, but that delete silently no-ops if there's no DELETE RLS
+      // policy on `quests` — so old, already-completed rows from earlier
+      // refreshes can still be sitting in the table. Rather than trust the
+      // delete to have worked, only keep the newest batch per quest_type
+      // here. generation_id is NOT NULL on every row (FK to
+      // ai_generations, always resolved/created before insert — see
+      // _generateFreshQuests/_createGenerationRow), so it's an exact batch
+      // id: every row from one refresh shares the same generation_id, and
+      // no two refreshes ever share one. Group on that and keep only the
+      // most recent generation per quest_type, which reliably filters out
+      // stale rows regardless of what happened in the DB.
+      final byType = <String, Map<String, List<Map<String, dynamic>>>>{
+        'daily': {},
+        'weekly': {},
+      };
+      // Track each generation's most recent created_at so we can pick the
+      // newest generation even though rows within it may not be sorted.
+      final generationCreatedAt = <String, String>{};
       for (final row in (rows as List<dynamic>)) {
         final map = row as Map<String, dynamic>;
-        final expiresAt = DateTime.tryParse(map['expires_at']?.toString() ?? '');
-        final expired = expiresAt != null && expiresAt.isBefore(now);
-
-        if (map['quest_type'] == 'daily') {
-          sawDaily = true;
-          if (!expired) {
-            daily.add(_mapQuestRow(map));
-            dailyAllExpired = false;
-          }
-        } else if (map['quest_type'] == 'weekly') {
-          sawWeekly = true;
-          if (!expired) {
-            weekly.add(_mapQuestRow(map));
-            weeklyAllExpired = false;
-          }
+        final type = map['quest_type'];
+        if (type != 'daily' && type != 'weekly') continue;
+        final batchKey = map['generation_id']?.toString() ?? '';
+        byType[type]!.putIfAbsent(batchKey, () => []).add(map);
+        final createdAt = map['created_at']?.toString() ?? '';
+        final existing = generationCreatedAt[batchKey];
+        if (existing == null || createdAt.compareTo(existing) > 0) {
+          generationCreatedAt[batchKey] = createdAt;
         }
       }
 
-      if (mounted) {
-        setState(() {
-          _dailyQuests = daily;
-          _weeklyQuests = weekly;
+      List<Map<String, dynamic>> latestBatch(String type) {
+        final batches = byType[type]!;
+        if (batches.isEmpty) return [];
+        final latestKey = batches.keys.reduce((a, b) {
+          final aTime = generationCreatedAt[a] ?? '';
+          final bTime = generationCreatedAt[b] ?? '';
+          return aTime.compareTo(bTime) >= 0 ? a : b;
         });
+        return batches[latestKey]!.map(_mapQuestRow).toList();
       }
 
-      // If the whole batch expired while the app was closed, refresh right
-      // away rather than waiting for the on-screen countdown to reach zero.
-      if (sawDaily && dailyAllExpired) _refreshDailyQuests();
-      if (sawWeekly && weeklyAllExpired) _refreshWeeklyQuests();
+      final daily = latestBatch('daily');
+      final weekly = latestBatch('weekly');
+
+      if (!mounted) return;
+      final now = DateTime.now();
+      setState(() {
+        _dailyQuests = daily;
+        _weeklyQuests = weekly;
+        // Quests stay visible (locked) past expiry — the countdown chip
+        // just gets swapped for a small "Refresh quests" button; nothing
+        // regenerates automatically anymore.
+        _dailyExpired = _questSetExpiry(daily)?.isBefore(now) ?? false;
+        _weeklyExpired = _questSetExpiry(weekly)?.isBefore(now) ?? false;
+      });
     } catch (e) {
       debugPrint('Error loading quests from Supabase: $e');
     }
   }
 
-  // ── Quest refresh (daily every 24h, weekly every 7d) ────────────────────
+  // ── Quest refresh (daily & weekly, triggered manually by the user) ─────
   //
-  // "Reset" always goes through the exact same generation call onboarding
-  // uses — AiService().generateQuests(), which itself routes to your Modal
-  // model (or Gemini, depending on ModelMode) — using the problem/root-cause
+  // The countdown only counts down — it never regenerates anything on its
+  // own. Once it hits zero, quests lock (see QuestCard's `enabled` flag)
+  // and a small refresh button takes the countdown chip's place. Tapping
+  // it goes through the exact same generation call onboarding uses —
+  // AiService().generateQuests(), which itself routes to your Modal model
+  // (or Gemini, depending on ModelMode) — using the problem/root-cause
   // + lifestyle context that produced the expiring batch. If that call
   // fails for any reason (network, API down, no prior context to work
   // from), it falls back to the same static fallback quest set onboarding
@@ -218,6 +248,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   // completed on the old quests" shortcut.
   bool _refreshingDaily = false;
   bool _refreshingWeekly = false;
+  // Set by _generateFreshQuests/_saveFreshQuests on failure, read and
+  // cleared by _refreshQuestSet right after, to show a SnackBar instead of
+  // failures only ever going to debugPrint (invisible outside a dev console).
+  String? _lastRefreshError;
 
   Future<void> _refreshDailyQuests() => _refreshQuestSet(isWeekly: false);
   Future<void> _refreshWeeklyQuests() => _refreshQuestSet(isWeekly: true);
@@ -230,10 +264,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return; // can't attribute/save a regeneration
 
-    if (isWeekly) {
-      _refreshingWeekly = true;
-    } else {
-      _refreshingDaily = true;
+    _lastRefreshError = null;
+
+    if (mounted) {
+      setState(() {
+        if (isWeekly) {
+          _refreshingWeekly = true;
+        } else {
+          _refreshingDaily = true;
+        }
+      });
     }
 
     try {
@@ -242,7 +282,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           ? now.add(const Duration(days: 7))
           : DateTime(now.year, now.month, now.day + 1);
 
-      final freshQuests = await _generateFreshQuests(
+      final generated = await _generateFreshQuests(
         userId: user.id,
         currentQuests: current,
         isWeekly: isWeekly,
@@ -250,26 +290,63 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       final newRows = await _saveFreshQuests(
         userId: user.id,
-        quests: freshQuests,
+        quests: generated.quests,
         isWeekly: isWeekly,
         expiresAt: newExpiry,
+        generationId: generated.generationId,
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        // The generation + save already completed and (barring a DB
+        // error, which is separately recorded in _lastRefreshError) is
+        // persisted in Supabase — so even though this specific widget
+        // instance can no longer update itself, the next time the
+        // dashboard loads it'll pick up the fresh quests from
+        // _loadQuestsFromSupabase. See didChangeAppLifecycleState too,
+        // which reloads on app resume for exactly this kind of long wait.
+        debugPrint('Quest refresh finished after the dashboard was unmounted — '
+            'saved to Supabase, will show next time it loads.');
+        return;
+      }
       setState(() {
         if (isWeekly) {
           _weeklyQuests = newRows;
+          _weeklyExpired = false;
         } else {
           _dailyQuests = newRows;
+          _dailyExpired = false;
         }
       });
     } catch (e) {
-      debugPrint('Error refreshing ${isWeekly ? 'weekly' : 'daily'} quests: $e');
+      debugPrint(
+          'Error refreshing ${isWeekly ? 'weekly' : 'daily'} quests: $e');
+      _lastRefreshError = 'Refreshing quests failed: '
+          '${e.toString().replaceFirst('Exception: ', '')}';
     } finally {
-      if (isWeekly) {
-        _refreshingWeekly = false;
+      if (mounted) {
+        setState(() {
+          if (isWeekly) {
+            _refreshingWeekly = false;
+          } else {
+            _refreshingDaily = false;
+          }
+        });
+        if (_lastRefreshError != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_lastRefreshError!),
+              backgroundColor: AppTheme.bg700,
+              duration: const Duration(seconds: 6),
+            ),
+          );
+          _lastRefreshError = null;
+        }
       } else {
-        _refreshingDaily = false;
+        if (isWeekly) {
+          _refreshingWeekly = false;
+        } else {
+          _refreshingDaily = false;
+        }
       }
     }
   }
@@ -279,11 +356,29 @@ class _DashboardScreenState extends State<DashboardScreen>
   /// AiService().generateQuests() call onboarding uses. On any failure,
   /// returns the same static fallback quests onboarding falls back to —
   /// so a "reset" always produces a real quest set, generated the same way.
-  Future<List<GeneratedQuest>> _generateFreshQuests({
+  ///
+  /// Also returns the generation_id it found (if any) so the caller can
+  /// attach it to the new quest rows — without this, inserting a batch
+  /// with no generation_id could silently fail against your schema (if
+  /// that column is required) and previously showed nothing on screen
+  /// with no error at all.
+  Future<({List<GeneratedQuest> quests, dynamic generationId})>
+      _generateFreshQuests({
     required String userId,
     required List<Map<String, dynamic>> currentQuests,
     required bool isWeekly,
   }) async {
+    // Only used to look up CONTEXT (the problem/root-cause/lifestyle behind
+    // the expiring batch) for the AI prompt below. Deliberately never
+    // reused as the generation_id for the new rows we insert — doing that
+    // used to make new quests share a generation_id with the old
+    // (possibly-completed) batch they're replacing, which made the old
+    // rows get grouped in as part of "the current batch" everywhere batch
+    // identity is keyed off generation_id (dashboard load, cleanup
+    // queries, etc). Every refresh now always gets its own fresh
+    // generation_id — see the unconditional _createGenerationRow calls
+    // below instead of the old `foundGenerationId ??= ...` pattern.
+    dynamic contextGenerationId;
     try {
       final anyId = currentQuests
           .map((q) => q['id'])
@@ -297,12 +392,12 @@ class _DashboardScreenState extends State<DashboardScreen>
             .select('generation_id')
             .eq('id', anyId)
             .maybeSingle();
-        final generationId = questRow?['generation_id'];
-        if (generationId != null) {
+        contextGenerationId = questRow?['generation_id'];
+        if (contextGenerationId != null) {
           generationRow = await Supabase.instance.client
               .from('ai_generations')
               .select()
-              .eq('id', generationId)
+              .eq('id', contextGenerationId)
               .maybeSingle();
           final stateId = generationRow?['user_state_id'];
           if (stateId != null) {
@@ -338,39 +433,124 @@ class _DashboardScreenState extends State<DashboardScreen>
         emotion: (stateRow?['emotion'] as String?) ?? 'neutral',
       );
 
-      final raw = (isWeekly ? parsed['weekly'] : parsed['daily'])
-          as List<dynamic>?;
+      final raw =
+          (isWeekly ? parsed['weekly'] : parsed['daily']) as List<dynamic>?;
       if (raw == null || raw.isEmpty) {
         throw Exception(
             'Empty ${isWeekly ? 'weekly' : 'daily'} quest list from API');
       }
-      return raw
+      var quests = raw
           .map((e) => GeneratedQuest.fromJson(e as Map<String, dynamic>))
           .toList();
+
+      // Safety net: guarantee discipline/health/knowledge/social are all
+      // represented even if the model didn't spread categories evenly.
+      quests = GeneratedQuest.ensureAllCategories(
+        quests,
+        fillerByCategory: isWeekly
+            ? GeneratedQuest.weeklyFillerByCategory()
+            : GeneratedQuest.dailyFillerByCategory(widget.goal),
+      );
+
+      // Always a NEW generation row for this new batch — never reattach to
+      // contextGenerationId, or the new rows would share a batch identity
+      // with the old (possibly-completed) quests they're replacing.
+      final newGenerationId = await _createGenerationRow(
+        userId: userId,
+        primaryProblem: parsed['primary_problem'] as String? ?? widget.goal,
+        rootCause: parsed['root_cause'] as String? ?? 'unknown',
+        reasoning: parsed['reasoning'] as String? ??
+            'Regenerated from the dashboard refresh button.',
+      );
+
+      return (quests: quests, generationId: newGenerationId);
     } catch (e) {
-      debugPrint(
-          'Quest regeneration failed — using the same fallback quests '
+      debugPrint('Quest regeneration failed — using the same fallback quests '
           'onboarding uses when the API is unavailable: $e');
-      return isWeekly
+      _lastRefreshError =
+          'Couldn\'t reach your model, so fallback quests were used '
+          'instead. (${e.toString().replaceFirst('Exception: ', '')})';
+      final quests = isWeekly
           ? GeneratedQuest.fallbackWeekly()
           : GeneratedQuest.fallbackDaily(widget.goal);
+
+      // Same reasoning as above — a fresh generation_id for this batch,
+      // never the old contextGenerationId.
+      final newGenerationId = await _createGenerationRow(
+        userId: userId,
+        primaryProblem: widget.goal,
+        rootCause: 'unknown',
+        reasoning: 'Fallback quests — the model was unavailable when this '
+            'batch was generated.',
+      );
+
+      return (quests: quests, generationId: newGenerationId);
     }
+  }
+
+  /// Creates a minimal user_state + ai_generations row pair, mirroring the
+  /// shape onboarding writes in student_quest_screen.dart, and returns the
+  /// new generation id. Called on every dashboard refresh (success or
+  /// fallback) so each new batch gets its own generation_id, distinct from
+  /// whatever batch it's replacing — see _generateFreshQuests above.
+  Future<dynamic> _createGenerationRow({
+    required String userId,
+    required String primaryProblem,
+    required String rootCause,
+    required String reasoning,
+  }) async {
+    final stateRow = await Supabase.instance.client
+        .from('user_state')
+        .insert({
+          'user_id': userId,
+          'sleep_hours': 7.0,
+          'study_hours': 4.0,
+          'screen_time_hours': 4.0,
+          'stress_level': 3,
+          'physical_activity_hours': 1.0,
+          'social_hours': 2.0,
+          'gpa': 3.0,
+          'emotion': 'neutral',
+          'source': 'dashboard_refresh',
+        })
+        .select()
+        .single();
+
+    final generationRow = await Supabase.instance.client
+        .from('ai_generations')
+        .insert({
+          'user_id': userId,
+          'user_state_id': stateRow['id'],
+          'primary_problem': primaryProblem,
+          'root_cause': rootCause,
+          'reasoning': reasoning,
+          'model_version': AiService.lastSource,
+        })
+        .select()
+        .single();
+
+    return generationRow['id'];
   }
 
   /// Inserts a freshly generated batch into Supabase — exactly like the
   /// insert onboarding does after generation — and returns the
   /// dashboard-shaped rows (with real ids) ready to drop into state. If the
-  /// insert itself fails (e.g. offline), the quests are still shown locally
-  /// without ids rather than silently discarded.
+  /// insert itself fails (e.g. offline, or a schema constraint like a
+  /// required generation_id), the quests are still shown locally without
+  /// ids rather than silently discarded, and the failure is recorded in
+  /// _lastRefreshError so the caller can surface it instead of it going
+  /// completely unnoticed.
   Future<List<Map<String, dynamic>>> _saveFreshQuests({
     required String userId,
     required List<GeneratedQuest> quests,
     required bool isWeekly,
     required DateTime expiresAt,
+    dynamic generationId,
   }) async {
     final rowsToInsert = quests
         .map((q) => {
               'user_id': userId,
+              if (generationId != null) 'generation_id': generationId,
               'title': q.title,
               'xp_reward': int.tryParse(q.xp) ?? 10,
               'category': q.category,
@@ -382,6 +562,15 @@ class _DashboardScreenState extends State<DashboardScreen>
         .toList();
 
     try {
+      // Clear out the old batch of this type first, so the table only
+      // ever holds one active daily batch and one active weekly batch per
+      // user instead of accumulating every past refresh.
+      await Supabase.instance.client
+          .from('quests')
+          .delete()
+          .eq('user_id', userId)
+          .eq('quest_type', isWeekly ? 'weekly' : 'daily');
+
       final inserted = await Supabase.instance.client
           .from('quests')
           .insert(rowsToInsert)
@@ -391,6 +580,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           .toList();
     } catch (e) {
       debugPrint('Failed to save regenerated quests (showing locally): $e');
+      _lastRefreshError =
+          'Generated new quests, but saving them failed, so they\'re only '
+          'showing on this screen for now. (${e.toString().replaceFirst('Exception: ', '')})';
       return quests
           .map((q) => {
                 'id': null,
@@ -463,8 +655,22 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _headerCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A Modal generation can take up to ~7 minutes, easily longer than the
+    // app can stay foregrounded/unbackgrounded on some devices. If that
+    // happens mid-refresh, the in-flight request finishes and saves fine,
+    // but this widget instance might have missed the moment to update
+    // itself. Reloading on resume picks up whatever's actually in
+    // Supabase, so a completed refresh is never stuck invisible.
+    if (state == AppLifecycleState.resumed && mounted) {
+      _loadQuestsFromSupabase();
+    }
   }
 
   void _onQuestComplete(Map<String, dynamic> quest, {required bool isWeekly}) {
@@ -513,8 +719,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     // Persist level, XP, quest count, stats, and streak/ghost-mode data
-    // together in one Supabase write.
-    _persistProgress();
+    // together in one Supabase write. Streak only advances for daily
+    // quests — see the isWeekly check inside _persistProgress.
+    _persistProgress(isWeekly: isWeekly);
 
     Future.delayed(Duration(milliseconds: leveledUp ? 1800 : 700), () {
       if (mounted && !_showLevelUp) {
@@ -523,43 +730,52 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
 
-  Future<void> _persistProgress() async {
+  Future<void> _persistProgress({required bool isWeekly}) async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
-      // Work out the new streak from the last known active date. Same
-      // calendar day → unchanged. Exactly one day later → +1. Anything
-      // longer than that → the streak was broken, restart at 1.
-      final now = DateTime.now();
+      // Streak is a daily-habit metric — only a completed *daily* quest
+      // should move it. Completing a weekly quest still saves XP/level/
+      // stats as normal, it just leaves streak/last-active-date alone.
       var streak = _streak;
-      if (_lastActiveDate == null) {
-        streak = 1;
-      } else {
-        final daysSince = DateTime(now.year, now.month, now.day)
-            .difference(DateTime(_lastActiveDate!.year, _lastActiveDate!.month,
-                _lastActiveDate!.day))
-            .inDays;
-        if (daysSince == 1) {
-          streak += 1;
-        } else if (daysSince > 1) {
+      var ghostMode = _everCompletedBeforeSixAM;
+      var lastActive = _lastActiveDate;
+
+      if (!isWeekly) {
+        // Work out the new streak from the last known active date. Same
+        // calendar day → unchanged. Exactly one day later → +1. Anything
+        // longer than that → the streak was broken, restart at 1.
+        final now = DateTime.now();
+        if (_lastActiveDate == null) {
           streak = 1;
+        } else {
+          final daysSince = DateTime(now.year, now.month, now.day)
+              .difference(DateTime(_lastActiveDate!.year,
+                  _lastActiveDate!.month, _lastActiveDate!.day))
+              .inDays;
+          if (daysSince == 1) {
+            streak += 1;
+          } else if (daysSince > 1) {
+            streak = 1;
+          }
+          // daysSince == 0 (same day): streak stays as-is.
         }
-        // daysSince == 0 (same day): streak stays as-is.
-      }
 
-      final ghostMode = _everCompletedBeforeSixAM || now.hour < 6;
+        ghostMode = _everCompletedBeforeSixAM || now.hour < 6;
+        lastActive = now;
 
-      if (mounted) {
-        setState(() {
+        if (mounted) {
+          setState(() {
+            _streak = streak;
+            _everCompletedBeforeSixAM = ghostMode;
+            _lastActiveDate = lastActive;
+          });
+        } else {
           _streak = streak;
           _everCompletedBeforeSixAM = ghostMode;
-          _lastActiveDate = now;
-        });
-      } else {
-        _streak = streak;
-        _everCompletedBeforeSixAM = ghostMode;
-        _lastActiveDate = now;
+          _lastActiveDate = lastActive;
+        }
       }
 
       await AvatarService().saveProgressSnapshot(
@@ -569,7 +785,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         completedQuests: _completedQuests,
         stats: _stats,
         streak: streak,
-        lastActiveDate: now,
+        lastActiveDate: lastActive ?? DateTime.now(),
         ghostModeUnlocked: ghostMode,
       );
 
@@ -1136,26 +1352,28 @@ class _DashboardScreenState extends State<DashboardScreen>
       return _buildEmptyQuestState();
     }
 
-    final now = DateTime.now();
-    final dailyExpiry = _questSetExpiry(_dailyQuests) ??
-        DateTime(now.year, now.month, now.day + 1);
-    final weeklyExpiry =
-        _questSetExpiry(_weeklyQuests) ?? now.add(const Duration(days: 7));
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 108),
       children: [
         // ── DAILY QUESTS ──
         _sectionTitle(
           title: 'Today',
-          subtitle: 'Small wins that keep the bigger goal moving.',
+          subtitle: _refreshingDaily
+              ? 'Generating new quests — this can take up to ~7 minutes '
+                  'on a cold start, please wait.'
+              : 'Small wins that keep the bigger goal moving.',
           trailing: _dailyQuests.isEmpty
               ? null
-              : CountdownChip(
-                  target: dailyExpiry,
-                  color: AppTheme.mana,
-                  onExpire: _refreshDailyQuests,
-                ),
+              : (_dailyExpired
+                  ? _refreshButton(isWeekly: false, color: AppTheme.mana)
+                  : CountdownChip(
+                      target: _questSetExpiry(_dailyQuests) ?? DateTime.now(),
+                      color: AppTheme.mana,
+                      onExpire: () {
+                        if (!mounted) return;
+                        setState(() => _dailyExpired = true);
+                      },
+                    )),
         ),
         const SizedBox(height: 12),
         if (_dailyQuests.isEmpty)
@@ -1165,29 +1383,27 @@ class _DashboardScreenState extends State<DashboardScreen>
                 style: AppTheme.monoFont(size: 12, color: AppTheme.text600)),
           )
         else
-          ..._dailyQuests.asMap().entries.map((e) {
-            return QuestCard(
-              title: e.value['title'] as String,
-              xpReward: e.value['xp'] as String,
-              category: e.value['category'] as String,
-              completed: e.value['completed'] as bool,
-              index: e.key,
-              description: e.value['why'] as String?,
-              onComplete: () => _onQuestComplete(e.value, isWeekly: false),
-            );
-          }),
+          ..._buildQuestSection(_dailyQuests, isWeekly: false),
         const SizedBox(height: 24),
         // ── WEEKLY QUESTS ──
         _sectionTitle(
           title: 'This week',
-          subtitle: 'Larger pushes for when you have breathing room.',
+          subtitle: _refreshingWeekly
+              ? 'Generating new quests — this can take up to ~7 minutes '
+                  'on a cold start, please wait.'
+              : 'Larger pushes for when you have breathing room.',
           trailing: _weeklyQuests.isEmpty
               ? null
-              : CountdownChip(
-                  target: weeklyExpiry,
-                  color: AppTheme.xpBlue,
-                  onExpire: _refreshWeeklyQuests,
-                ),
+              : (_weeklyExpired
+                  ? _refreshButton(isWeekly: true, color: AppTheme.xpBlue)
+                  : CountdownChip(
+                      target: _questSetExpiry(_weeklyQuests) ?? DateTime.now(),
+                      color: AppTheme.xpBlue,
+                      onExpire: () {
+                        if (!mounted) return;
+                        setState(() => _weeklyExpired = true);
+                      },
+                    )),
         ),
         const SizedBox(height: 12),
         if (_weeklyQuests.isEmpty)
@@ -1197,18 +1413,143 @@ class _DashboardScreenState extends State<DashboardScreen>
                 style: AppTheme.monoFont(size: 12, color: AppTheme.text600)),
           )
         else
-          ..._weeklyQuests.asMap().entries.map((e) {
-            return QuestCard(
-              title: e.value['title'] as String,
-              xpReward: e.value['xp'] as String,
-              category: e.value['category'] as String,
-              completed: e.value['completed'] as bool,
-              index: e.key,
-              description: e.value['why'] as String?,
-              onComplete: () => _onQuestComplete(e.value, isWeekly: true),
-            );
-          }),
+          ..._buildQuestSection(_weeklyQuests, isWeekly: true),
       ],
+    );
+  }
+
+  /// Renders a quest list split into active cards up top and a collapsible
+  /// "Completed" sub-section below, instead of interleaving done quests
+  /// (struck-through) among the ones still to do.
+  List<Widget> _buildQuestSection(
+    List<Map<String, dynamic>> quests, {
+    required bool isWeekly,
+  }) {
+    final active = quests.where((q) => q['completed'] != true).toList();
+    final completed = quests.where((q) => q['completed'] == true).toList();
+    final expanded =
+        isWeekly ? _weeklyCompletedExpanded : _dailyCompletedExpanded;
+
+    Widget buildCard(Map<String, dynamic> q, int index) {
+      return QuestCard(
+        // Without a stable key, Flutter matches widgets to state by list
+        // position — so when a quest moves out of the active list (into
+        // Completed) and something else slides into that same slot, the
+        // new occupant could inherit the old widget's leftover
+        // _localCompleted=true state and render as done when it isn't.
+        // Falling back to title+category only matters for quests that
+        // somehow have no id (e.g. an insert failed) so two quests never
+        // collide on the same key.
+        key: ValueKey(q['id'] ?? '${q['title']}_${q['category']}'),
+        title: q['title'] as String,
+        xpReward: q['xp'] as String,
+        category: q['category'] as String,
+        completed: q['completed'] as bool,
+        index: index,
+        description: q['why'] as String?,
+        onComplete: () => _onQuestComplete(q, isWeekly: isWeekly),
+      );
+    }
+
+    final widgets = <Widget>[
+      ...active.asMap().entries.map((e) => buildCard(e.value, e.key)),
+    ];
+
+    if (active.isEmpty && completed.isNotEmpty) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            'All done for now — nice work.',
+            style: AppTheme.monoFont(size: 12, color: AppTheme.text600),
+          ),
+        ),
+      );
+    }
+
+    if (completed.isNotEmpty) {
+      widgets.add(const SizedBox(height: 4));
+      widgets.add(
+        GestureDetector(
+          onTap: () => setState(() {
+            if (isWeekly) {
+              _weeklyCompletedExpanded = !_weeklyCompletedExpanded;
+            } else {
+              _dailyCompletedExpanded = !_dailyCompletedExpanded;
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 16,
+                  color: AppTheme.text400,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Completed (${completed.length})',
+                  style: AppTheme.monoFont(size: 12, color: AppTheme.text400),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (expanded) {
+        widgets.addAll(
+          completed
+              .asMap()
+              .entries
+              .map((e) => buildCard(e.value, active.length + e.key)),
+        );
+      }
+    }
+
+    return widgets;
+  }
+
+  /// Small tappable "refresh" pill shown in place of the countdown chip
+  /// once a batch expires — taps trigger the same generateQuests() call
+  /// onboarding uses (see _generateFreshQuests below).
+  Widget _refreshButton({required bool isWeekly, required Color color}) {
+    final generating = isWeekly ? _refreshingWeekly : _refreshingDaily;
+    return GestureDetector(
+      onTap: generating
+          ? null
+          : () => isWeekly ? _refreshWeeklyQuests() : _refreshDailyQuests(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: generating ? 0.06 : 0.14),
+          border: Border.all(color: color.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (generating)
+              SizedBox(
+                width: 11,
+                height: 11,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.6,
+                  valueColor: AlwaysStoppedAnimation(color),
+                ),
+              )
+            else
+              Icon(Icons.refresh, size: 13, color: color),
+            const SizedBox(width: 5),
+            Text(
+              generating ? 'Generating…' : 'Refresh quests',
+              style: AppTheme.monoFont(size: 10, color: color),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -360,7 +360,7 @@ class _AvatarSelectionScreenState extends State<AvatarSelectionScreen> {
       id: 'preview-${avatar.id}',
       userId: 'preview',
       selectedAvatarId: avatar.id,
-      currentLevel: 5,
+      currentLevel: 1,
       dominantStat: avatar.defaultStat,
       equippedBadges: const [],
       lastUpdated: DateTime.now(),

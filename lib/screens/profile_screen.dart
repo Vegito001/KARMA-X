@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glitch_text.dart';
@@ -8,6 +9,7 @@ import '../widgets/avatar_display.dart';
 import '../models/avatar.dart';
 import '../models/user_avatar_progress.dart';
 import '../services/avatar_service.dart';
+import 'avatar_inspector_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String playerName;
@@ -251,6 +253,21 @@ class _ProfileScreenState extends State<ProfileScreen>
                 progress: _avatarProgress!,
                 size: 88,
                 showBadges: true,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.of(context).push(
+                    PageRouteBuilder(
+                      opaque: false,
+                      pageBuilder: (_, animation, __) => FadeTransition(
+                        opacity: animation,
+                        child: AvatarInspectorScreen(
+                          avatar: _currentAvatar!,
+                          progress: _avatarProgress!,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
         const SizedBox(width: 20),
         Expanded(
@@ -283,6 +300,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                   size: 9,
                   color: AppTheme.text400,
                   letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap your avatar to interact ✦',
+                style: AppTheme.monoFont(
+                  size: 9,
+                  color: AppTheme.copper.withValues(alpha: 0.75),
+                  letterSpacing: 0.5,
                 ),
               ),
             ],

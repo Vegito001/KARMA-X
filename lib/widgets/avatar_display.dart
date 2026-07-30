@@ -96,8 +96,10 @@ class _AvatarDisplayState extends State<AvatarDisplay>
     );
 
     final modelPath = _resolveModelPath(
-      AvatarTheme.avatarModels[widget.avatar.archetype] ??
-          'assets/models/default.glb',
+      AvatarTheme.modelPathFor(
+        widget.avatar.archetype,
+        widget.progress.currentLevel,
+      ),
     );
 
     return GestureDetector(
@@ -148,7 +150,11 @@ class _AvatarDisplayState extends State<AvatarDisplay>
                       width: widget.size,
                       height: widget.size,
                       child: ModelViewer(
-                        key: ValueKey(widget.avatar.archetype),
+                        // Keyed on the resolved path, not just archetype —
+                        // otherwise leveling into a new tier (same
+                        // archetype, different .glb) wouldn't make
+                        // model_viewer_plus reload the model.
+                        key: ValueKey(modelPath),
                         src: modelPath,
                         alt: widget.avatar.name,
                         autoRotate:

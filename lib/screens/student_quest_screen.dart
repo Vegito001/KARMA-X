@@ -70,6 +70,12 @@ class GeneratedQuest {
           why: 'Reduces decision fatigue next morning.',
         ),
         GeneratedQuest(
+          title: 'Check in with a friend or study buddy today',
+          xp: '10',
+          category: 'social',
+          why: 'Social support buffers stress and keeps you accountable.',
+        ),
+        GeneratedQuest(
           title: 'Sleep by a consistent time tonight',
           xp: '12',
           category: 'health',
@@ -96,7 +102,118 @@ class GeneratedQuest {
           category: 'knowledge',
           why: 'Self-awareness is the meta-skill that improves all others.',
         ),
+        GeneratedQuest(
+          title: 'Get 3 workouts of 20+ minutes in this week',
+          xp: '25',
+          category: 'health',
+          why: 'Regular movement is the biggest lever for sustained energy.',
+        ),
       ];
+
+  // ── Category coverage guarantee ─────────────────────────────────────────
+  // The AI (Modal or Gemini) is prompted to spread quests across all four
+  // categories, but a small fine-tuned model won't always follow that
+  // instruction perfectly. This is the safety net: given whatever list the
+  // model returned, it makes sure every one of the four categories is
+  // represented at least once, by swapping out a quest from a category
+  // that already has a duplicate (never removing a category's only quest)
+  // and only appending if there's no safe duplicate to swap.
+  static const List<String> requiredCategories = [
+    'discipline',
+    'health',
+    'knowledge',
+    'social',
+  ];
+
+  static List<GeneratedQuest> ensureAllCategories(
+    List<GeneratedQuest> quests, {
+    required Map<String, GeneratedQuest> fillerByCategory,
+  }) {
+    if (quests.isEmpty) return quests;
+
+    final present = quests.map((q) => q.category).toSet();
+    final missing =
+        requiredCategories.where((c) => !present.contains(c)).toList();
+    if (missing.isEmpty) return quests;
+
+    final result = List<GeneratedQuest>.from(quests);
+    for (final category in missing) {
+      final filler = fillerByCategory[category];
+      if (filler == null) continue;
+
+      final counts = <String, int>{};
+      for (final q in result) {
+        counts[q.category] = (counts[q.category] ?? 0) + 1;
+      }
+      final swapIndex = result.indexWhere((q) => (counts[q.category] ?? 0) > 1);
+      if (swapIndex != -1) {
+        result[swapIndex] = filler;
+      } else {
+        result.add(filler);
+      }
+    }
+    return result;
+  }
+
+  /// Generic filler quests keyed by category, used only to plug a gap left
+  /// by the model — tone matches the daily fallback set above.
+  static Map<String, GeneratedQuest> dailyFillerByCategory(
+          String problemTitle) =>
+      {
+        'discipline': GeneratedQuest(
+          title: '2-min rule: start any task immediately',
+          xp: '10',
+          category: 'discipline',
+          why: 'Breaks the initiation barrier causing '
+              '${problemTitle.toLowerCase()}.',
+        ),
+        'health': GeneratedQuest(
+          title: '10-min walk between study sessions',
+          xp: '8',
+          category: 'health',
+          why: 'Resets dopamine for sustained focus.',
+        ),
+        'knowledge': GeneratedQuest(
+          title: 'Write 3 tasks for tomorrow before bed',
+          xp: '10',
+          category: 'knowledge',
+          why: 'Reduces decision fatigue next morning.',
+        ),
+        'social': GeneratedQuest(
+          title: 'Check in with a friend or study buddy today',
+          xp: '10',
+          category: 'social',
+          why: 'Social support buffers stress and keeps you accountable.',
+        ),
+      };
+
+  /// Same idea for weekly-scale quests (higher XP, week-long framing).
+  static Map<String, GeneratedQuest> weeklyFillerByCategory() => {
+        'discipline': GeneratedQuest(
+          title: 'Complete one full Pomodoro session (4×25 min)',
+          xp: '30',
+          category: 'discipline',
+          why: 'Builds structured focus habit directly targeting your block.',
+        ),
+        'health': GeneratedQuest(
+          title: 'Get 3 workouts of 20+ minutes in this week',
+          xp: '25',
+          category: 'health',
+          why: 'Regular movement is the biggest lever for sustained energy.',
+        ),
+        'knowledge': GeneratedQuest(
+          title: 'Reflect on the week: what worked, what didn\'t',
+          xp: '20',
+          category: 'knowledge',
+          why: 'Self-awareness is the meta-skill that improves all others.',
+        ),
+        'social': GeneratedQuest(
+          title: 'Talk to one person you normally avoid',
+          xp: '25',
+          category: 'social',
+          why: 'Expands comfort zone in a controlled, low-stakes way.',
+        ),
+      };
 }
 
 // ─────────────────────────────────────────────
@@ -270,6 +387,14 @@ class _StudentQuestScreenState extends State<StudentQuestScreen>
             })
         .toList();
 
+    // Clear out any previous batch before inserting the new one — covers
+    // the case where a user re-runs onboarding with old quests still
+    // sitting in the table, so it never accumulates stale rows.
+    await Supabase.instance.client
+        .from('quests')
+        .delete()
+        .eq('user_id', userId);
+
     final insertedDaily = dailyRows.isEmpty
         ? <Map<String, dynamic>>[]
         : List<Map<String, dynamic>>.from(await Supabase.instance.client
@@ -321,12 +446,24 @@ class _StudentQuestScreenState extends State<StudentQuestScreen>
           parsed['primary_problem'] as String? ?? widget.problem.title;
       final rootCause = parsed['root_cause'] as String? ?? '';
 
-      final daily = dailyRaw
+      var daily = dailyRaw
           .map((e) => GeneratedQuest.fromJson(e as Map<String, dynamic>))
           .toList();
-      final weekly = weeklyRaw
+      var weekly = weeklyRaw
           .map((e) => GeneratedQuest.fromJson(e as Map<String, dynamic>))
           .toList();
+
+      // Safety net: guarantee discipline/health/knowledge/social are all
+      // represented even if the model didn't spread categories evenly.
+      daily = GeneratedQuest.ensureAllCategories(
+        daily,
+        fillerByCategory:
+            GeneratedQuest.dailyFillerByCategory(widget.problem.title),
+      );
+      weekly = GeneratedQuest.ensureAllCategories(
+        weekly,
+        fillerByCategory: GeneratedQuest.weeklyFillerByCategory(),
+      );
 
       // ── Save profile + quests to Supabase ──────
       try {

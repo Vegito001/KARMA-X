@@ -48,5 +48,5 @@ class AiConfig {
 
   // ── NEW: your Modal vLLM endpoint ─────────────────────────────────────
   static const String modalUrl =
-      'https://sgogeta997--karmax-lora-vllm-serve.modal.run/v1/chat/completions';
+      'https://trunksdada123--karmax-lora-vllm-serve.modal.run/v1/chat/completions';
 }

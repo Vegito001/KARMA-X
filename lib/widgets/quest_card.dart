@@ -11,6 +11,9 @@ class QuestCard extends StatefulWidget {
   // One-line "why" description tying the quest back to the student's
   // problem — optional because manually-created quests may not have one.
   final String? description;
+  // Set to false once the quest's daily/weekly batch has expired — the
+  // card stays visible for reference but can no longer be tapped complete.
+  final bool enabled;
 
   const QuestCard({
     super.key,
@@ -21,6 +24,7 @@ class QuestCard extends StatefulWidget {
     this.onComplete,
     this.index = 0,
     this.description,
+    this.enabled = true,
   });
 
   @override
@@ -59,6 +63,19 @@ class _QuestCardState extends State<QuestCard>
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant QuestCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep local visual state in sync with the real data. This matters
+    // whenever the same State object gets reused for what is logically a
+    // different completed value — e.g. the underlying quest list reloads
+    // from Supabase (a fresh generation replacing the old one) rather than
+    // going through _handleComplete's tap flow.
+    if (widget.completed != oldWidget.completed) {
+      setState(() => _localCompleted = widget.completed);
+    }
+  }
+
   void _handleComplete() {
     setState(() => _localCompleted = true);
     widget.onComplete?.call();
@@ -73,145 +90,153 @@ class _QuestCardState extends State<QuestCard>
       child: SlideTransition(
         position: _slideIn,
         child: GestureDetector(
-          onTap: _localCompleted ? null : _handleComplete,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 400),
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: AppTheme.questCard(completed: _localCompleted),
-            child: Row(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _localCompleted
-                        ? AppTheme.copper
-                        : categoryColor.withValues(alpha: 0.12),
-                    border: Border.all(
+          onTap: (!widget.enabled || _localCompleted) ? null : _handleComplete,
+          child: AnimatedOpacity(
+            opacity: widget.enabled ? 1.0 : 0.45,
+            duration: const Duration(milliseconds: 300),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: AppTheme.questCard(completed: _localCompleted),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
                       color: _localCompleted
                           ? AppTheme.copper
-                          : categoryColor.withValues(alpha: 0.58),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color:
-                            (_localCompleted ? AppTheme.copper : categoryColor)
-                                .withValues(alpha: 0.16),
-                        blurRadius: 12,
+                          : categoryColor.withValues(alpha: 0.12),
+                      border: Border.all(
+                        color: _localCompleted
+                            ? AppTheme.copper
+                            : categoryColor.withValues(alpha: 0.58),
+                        width: 1,
                       ),
-                    ],
-                  ),
-                  child: _localCompleted
-                      ? const Icon(Icons.check, size: 15, color: AppTheme.bg900)
-                      : Icon(
-                          Icons.auto_awesome,
-                          size: 15,
-                          color: categoryColor,
-                        ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.title,
-                        style: AppTheme.uiFont(
-                          size: 14,
-                          weight: FontWeight.w700,
-                          color: _localCompleted
-                              ? AppTheme.text400
-                              : AppTheme.text100,
-                        ).copyWith(
-                          decoration: _localCompleted
-                              ? TextDecoration.lineThrough
-                              : null,
-                          decorationColor: AppTheme.text400,
-                        ),
-                      ),
-                      if (widget.description != null &&
-                          widget.description!.trim().isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.description!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTheme.uiFont(
-                            size: 11.5,
-                            weight: FontWeight.w500,
-                            color: _localCompleted
-                                ? AppTheme.text600
-                                : AppTheme.text400,
-                          ).copyWith(height: 1.3),
-                        ),
-                      ],
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: categoryColor,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: categoryColor.withValues(alpha: 0.45),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _categoryLabel(widget.category),
-                            style: AppTheme.uiFont(
-                              size: 11,
-                              weight: FontWeight.w600,
-                              color: categoryColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                AnimatedOpacity(
-                  opacity: _localCompleted ? 0.35 : 1.0,
-                  duration: const Duration(milliseconds: 300),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _localCompleted
-                          ? AppTheme.bg700
-                          : AppTheme.copper.withValues(alpha: 0.96),
-                      borderRadius: BorderRadius.circular(6),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.copper.withValues(alpha: 0.16),
+                          color: (_localCompleted
+                                  ? AppTheme.copper
+                                  : categoryColor)
+                              .withValues(alpha: 0.16),
                           blurRadius: 12,
                         ),
                       ],
                     ),
-                    child: Text(
-                      '+${widget.xpReward} XP',
-                      style: AppTheme.uiFont(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        color:
-                            _localCompleted ? AppTheme.text400 : AppTheme.bg900,
+                    child: _localCompleted
+                        ? const Icon(Icons.check,
+                            size: 15, color: AppTheme.bg900)
+                        : Icon(
+                            Icons.auto_awesome,
+                            size: 15,
+                            color: categoryColor,
+                          ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: AppTheme.uiFont(
+                            size: 14,
+                            weight: FontWeight.w700,
+                            color: _localCompleted
+                                ? AppTheme.text400
+                                : AppTheme.text100,
+                          ).copyWith(
+                            decoration: _localCompleted
+                                ? TextDecoration.lineThrough
+                                : null,
+                            decorationColor: AppTheme.text400,
+                          ),
+                        ),
+                        if (widget.description != null &&
+                            widget.description!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.description!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTheme.uiFont(
+                              size: 11.5,
+                              weight: FontWeight.w500,
+                              color: _localCompleted
+                                  ? AppTheme.text600
+                                  : AppTheme.text400,
+                            ).copyWith(height: 1.3),
+                          ),
+                        ],
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: categoryColor,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:
+                                        categoryColor.withValues(alpha: 0.45),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _categoryLabel(widget.category),
+                              style: AppTheme.uiFont(
+                                size: 11,
+                                weight: FontWeight.w600,
+                                color: categoryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedOpacity(
+                    opacity: _localCompleted ? 0.35 : 1.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _localCompleted
+                            ? AppTheme.bg700
+                            : AppTheme.copper.withValues(alpha: 0.96),
+                        borderRadius: BorderRadius.circular(6),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.copper.withValues(alpha: 0.16),
+                            blurRadius: 12,
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        '+${widget.xpReward} XP',
+                        style: AppTheme.uiFont(
+                          size: 11,
+                          weight: FontWeight.w800,
+                          color: _localCompleted
+                              ? AppTheme.text400
+                              : AppTheme.bg900,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

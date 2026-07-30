@@ -86,14 +86,27 @@ class AiService {
         'identify the primary problem, the most likely root cause — taking the '
         'lifestyle state above into account, not just the stated problem — and '
         'explain in 2-3 sentences why the quests below are the right intervention. '
-        'Then generate 5 daily quests and 3 weekly quests. '
+        'Then generate 5 daily quests and 4 weekly quests. '
+        'The "category" field for each quest must be exactly one of: '
+        '"discipline", "health", "knowledge", "social". '
+        'Both the daily list AND the weekly list must each include at '
+        'least one quest from every one of those 4 categories — never '
+        'skip a category in either list, even if it means a quest is a '
+        'lighter fit than the others. '
         'Reply with ONLY a valid JSON object. No markdown, no code fences. '
         'Start with { and end with }.\n\n'
         'Required shape:\n'
         '{"primary_problem":"short label","root_cause":"short label",'
         '"reasoning":"2-3 sentence explanation of why this intervention was chosen",'
-        '"daily":[{"title":"quest title","xp":15,"category":"discipline","why":"one reason"}],'
-        '"weekly":[{"title":"quest title","xp":40,"category":"health","why":"one reason"}]}';
+        '"daily":[{"title":"quest title","xp":15,"category":"discipline","why":"one reason"},'
+        '{"title":"quest title","xp":15,"category":"health","why":"one reason"},'
+        '{"title":"quest title","xp":15,"category":"knowledge","why":"one reason"},'
+        '{"title":"quest title","xp":15,"category":"social","why":"one reason"},'
+        '{"title":"quest title","xp":15,"category":"discipline","why":"one reason"}],'
+        '"weekly":[{"title":"quest title","xp":30,"category":"discipline","why":"one reason"},'
+        '{"title":"quest title","xp":30,"category":"health","why":"one reason"},'
+        '{"title":"quest title","xp":30,"category":"knowledge","why":"one reason"},'
+        '{"title":"quest title","xp":30,"category":"social","why":"one reason"}]}';
 
     return await _route(prompt, maxTokens: 1100);
   }
@@ -182,9 +195,9 @@ class AiService {
             'temperature': 0.5,
           }),
         )
-        // 5 minutes, not 60s: your Modal container cold-starts from zero on
+        // 7 minutes, not 5: your Modal container cold-starts from zero on
         // the first request after it's been idle, and that alone can take
-        // several minutes. A short timeout was firing before Modal ever
+        // 6-7 minutes. A shorter timeout was firing before Modal ever
         // finished, forcing a Gemini fallback every time. Once the
         // container is warm, later calls return in seconds — this only
         // matters for that first (or first-after-idle) request.
@@ -193,9 +206,9 @@ class AiService {
         // default TimeoutException text, so lastError (shown in the UI)
         // actually tells you what happened instead of a vague stack trace.
         .timeout(
-          const Duration(minutes: 5),
+          const Duration(minutes: 7),
           onTimeout: () => throw Exception(
-              'Modal connection timed out after 5 minutes — the endpoint '
+              'Modal connection timed out after 7 minutes — the endpoint '
               'at ${AiConfig.modalUrl} did not respond in time. Check '
               '`python -m modal app logs karmax-lora-vllm` to see if the '
               'container is stuck, crashed, or the URL/account is wrong.'),
